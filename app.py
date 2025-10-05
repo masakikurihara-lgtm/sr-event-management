@@ -18,8 +18,10 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
 }
 
-EVENT_ID_START = 30000
-EVENT_ID_END = 41000
+#EVENT_ID_START = 30000
+EVENT_ID_START = 40291
+#EVENT_ID_END = 41000
+EVENT_ID_END = 40292
 ENTRY_CUTOFF = datetime(2023, 8, 18, 18, 0, tzinfo=JST)
 
 # ====== FTPヘルパー ======
