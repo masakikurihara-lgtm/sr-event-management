@@ -144,6 +144,10 @@ def fetch_and_merge_event_data():
 
     st.success("✅ マージと列整形が完了しました！")
     st.write("📊 merged.shape:", merged.shape)
+    
+    
+    # ✅ DataFrameを返す
+    return merged
 
 
 
