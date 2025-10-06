@@ -21,11 +21,6 @@ ARCHIVE_URL = "https://mksoul-pro.com/showroom/file/sr-event-archive.csv"
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; mksoul-bot/1.0)"}
 
-# FTP info should be placed in Streamlit Secrets:
-# [ftp]
-# host = "ftp11.gmoserver.jp"
-# user = "sd0866487@gmoserver.jp"
-# password = "..."
 DEFAULT_FTP_FALLBACK = {"host": None, "user": None, "password": None}
 
 # ---------- ヘルパー ----------
@@ -402,15 +397,35 @@ def fetch_and_build_database(event_start: int, event_end: int, max_workers: int,
             if c not in df_tmp.columns:
                 df_tmp[c] = ""
         df_tmp = df_tmp[col_order]
-        csv_bytes = df_tmp.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+
+        # 🔽 既存のFTPファイルを読み込んでマージ（追記＋重複排除）
+        try:
+            ftp_host = st.secrets["ftp"]["host"]
+            ftp_user = st.secrets["ftp"]["user"]
+            ftp_pass = st.secrets["ftp"]["password"]
+            with ftplib.FTP(ftp_host, timeout=30) as ftp:
+                ftp.login(ftp_user, ftp_pass)
+                buf = io.BytesIO()
+                ftp.retrbinary(f"RETR {save_path_ftp}", buf.write)
+                buf.seek(0)
+                existing_df = pd.read_csv(buf, dtype=str)
+        except Exception:
+            existing_df = pd.DataFrame(columns=col_order)
+
+        merged_df = pd.concat([existing_df, df_tmp], ignore_index=True)
+        merged_df.drop_duplicates(subset=["event_id", "ルームID"], inplace=True)
+        merged_df = merged_df[col_order]
+
+        csv_bytes = merged_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
         try:
             ftp_upload_bytes(save_path_ftp, csv_bytes, retries=2)
-            st.success(f"途中保存: {desc} (records={len(records)})")
+            st.success(f"途中保存: {desc} (records={len(merged_df)})")
             return True
         except Exception as e:
             st.warning(f"FTP保存失敗: {e}。ローカルダウンロードを用意します。")
             st.download_button("途中保存をダウンロード", data=csv_bytes, file_name=f"event_db_partial_{int(time.time())}.csv")
             return False
+
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
         futures = {ex.submit(process_event, eid, managed_rooms, archive_map, sleep_between_requests): eid for eid in valid_ids}
@@ -456,13 +471,39 @@ def fetch_and_build_database(event_start: int, event_end: int, max_workers: int,
         pass
 
     # 最終保存
-    csv_bytes = df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+    # 最終保存（既存データとマージして追記＋重複排除）
+    try:
+        ftp_host = st.secrets["ftp"]["host"]
+        ftp_user = st.secrets["ftp"]["user"]
+        ftp_pass = st.secrets["ftp"]["password"]
+        with ftplib.FTP(ftp_host, timeout=30) as ftp:
+            ftp.login(ftp_user, ftp_pass)
+            buf = io.BytesIO()
+            ftp.retrbinary(f"RETR {save_path_ftp}", buf.write)
+            buf.seek(0)
+            existing_df = pd.read_csv(buf, dtype=str)
+    except Exception:
+        existing_df = pd.DataFrame(columns=df.columns)
+
+    merged_df = pd.concat([existing_df, df], ignore_index=True)
+    merged_df.drop_duplicates(subset=["event_id", "ルームID"], inplace=True)
+
+    # 新しいイベントが上に来るように並び替え
+    try:
+        merged_df["event_id_num"] = merged_df["event_id"].astype(int)
+        merged_df.sort_values("event_id_num", ascending=False, inplace=True)
+        merged_df.drop(columns=["event_id_num"], inplace=True)
+    except Exception:
+        pass
+
+    csv_bytes = merged_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
     try:
         ftp_upload_bytes(save_path_ftp, csv_bytes, retries=3)
-        st.success(f"最終保存: FTP に保存しました ({save_path_ftp}) 件数={len(df)}")
+        st.success(f"最終保存: FTP に保存しました ({save_path_ftp}) 件数={len(merged_df)}")
     except Exception as e:
         st.warning(f"最終FTP保存に失敗しました: {e}。ダウンロードを用意します。")
         st.download_button("最終CSVをダウンロード", data=csv_bytes, file_name=f"event_database_{int(time.time())}.csv")
+
 
     return df
 
