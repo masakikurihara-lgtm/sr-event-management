@@ -19,12 +19,7 @@ API_ROOM_LIST = "https://www.showroom-live.com/api/event/room_list"
 API_CONTRIBUTION = "https://www.showroom-live.com/api/event/contribution_ranking"
 ROOM_LIST_URL = "https://mksoul-pro.com/showroom/file/room_list.csv"
 
-# デフォルト FTP（**推奨：Streamlit Secrets に設定してください**）
-# st.secrets の例:
-# [ftp]
-# host = "ftp11.gmoserver.jp"
-# user = "sd0866487@gmoserver.jp"
-# password = "v$p7d56C4#QpfCvj"
+
 DEFAULT_FTP_FALLBACK = {
     "host": None,
     "user": None,
