@@ -14,9 +14,9 @@ JST = pytz.timezone("Asia/Tokyo")
 ROOM_LIST_URL = "https://mksoul-pro.com/showroom/file/room_list.csv"
 FTP_FILE_PATH = "/mksoul-pro.com/showroom/file/event_database.csv"
 
-EVENT_ID_START = 30000
-EVENT_ID_END = 30500  # ⚙️テスト範囲を指定（広げる場合は段階的に）
-MAX_WORKERS = 10  # 並列スレッド数
+EVENT_ID_START = 33000
+EVENT_ID_END = 41000  # ⚙️テスト範囲を指定（広げる場合は段階的に）
+MAX_WORKERS = 16  # 並列スレッド数
 SAVE_INTERVAL = 20  # 20イベントごとに途中保存
 
 HEADERS = {
@@ -143,6 +143,7 @@ def fetch_and_merge_event_data():
                 "終了日時": fmt_time(detail.get("ended_at")),
                 "順位": rank,
                 "ポイント": point,
+                "備考": "",
                 "紐付け": "○",
                 "URL": detail.get("event_url"),
                 "レベル": quest_level,
