@@ -86,10 +86,10 @@ def fetch_and_merge_event_data():
 
     records = []
 
-    EVENT_ID_START = 33420
-    #EVENT_ID_START = 30000
-    EVENT_ID_END = 33555
-    #EVENT_ID_END = 41000
+    #EVENT_ID_START = 33420
+    EVENT_ID_START = 30000
+    #EVENT_ID_END = 33555
+    EVENT_ID_END = 41000
 
     # 例：対象期間の cutoff（不要なら省く）
     cutoff_dt = datetime(2023, 8, 18, 18, 0, tzinfo=JST)
