@@ -137,6 +137,7 @@ def fetch_and_merge_event_data():
                 "終了日時": detail.get("ended_at"),
                 "順位": rank,
                 "ポイント": point,
+                "備考": "",
                 "紐付け": "○",
                 "URL": detail.get("event_url"),
                 "レベル": quest_level,
