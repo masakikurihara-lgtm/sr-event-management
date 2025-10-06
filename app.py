@@ -115,30 +115,36 @@ def fetch_and_merge_event_data():
         df_api.merge(df_rooms, left_on="room_id", right_on="ルームID", how="left")
               .merge(df_archive, on="event_id", how="left")
     )
-    
-    st.write("🧩 merged.columns:", merged.columns.tolist())
 
-    merged["PR対象"] = ""
-    merged["紐付け"] = "○"
-    merged["URL"] = merged["event_url_key"].apply(lambda k: f"https://www.showroom-live.com/event/{k}" if pd.notna(k) else "")
-
-    merged.rename(columns={
-        "room_name": "ライバー名",
-        "account_id": "アカウントID",
+    # --- 🔧 列名を最終出力用に変換 ---
+    merged = merged.rename(columns={
+        "room_name": "ライバー名",        # 念のため残す（なければスキップされる）
+        "ルーム名": "ライバー名",
+        "アカウントID": "アカウントID",
         "event_name": "イベント名",
         "started_at": "開始日時",
         "ended_at": "終了日時",
         "rank": "順位",
         "point": "ポイント",
-        "quest_level": "レベル",
-    }, inplace=True)
+        "quest_level": "レベル"
+    })
 
-    merged = merged[
-        ["PR対象", "ライバー名", "アカウントID", "イベント名", "開始日時", "終了日時",
-         "順位", "ポイント", "紐付け", "URL", "レベル", "event_id"]
+    # --- 🔧 固定列（存在しない場合は追加） ---
+    for col in ["PR対象", "紐付け", "URL"]:
+        if col not in merged.columns:
+            merged[col] = ""
+
+    # --- 🔧 表示順を安全に制御 ---
+    expected_cols = [
+        "PR対象", "ライバー名", "アカウントID", "イベント名", "開始日時", "終了日時",
+        "順位", "ポイント", "紐付け", "URL", "レベル", "event_id"
     ]
+    available_cols = [c for c in expected_cols if c in merged.columns]
+    merged = merged[available_cols]
 
-    return merged
+    st.success("✅ マージと列整形が完了しました！")
+    st.write("📊 merged.shape:", merged.shape)
+
 
 
 # ====== Streamlit UI ======
