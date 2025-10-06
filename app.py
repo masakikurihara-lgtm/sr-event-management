@@ -115,6 +115,8 @@ def fetch_and_merge_event_data():
         df_api.merge(df_rooms, left_on="room_id", right_on="ルームID", how="left")
               .merge(df_archive, on="event_id", how="left")
     )
+    
+    st.write("🧩 merged.columns:", merged.columns.tolist())
 
     merged["PR対象"] = ""
     merged["紐付け"] = "○"
