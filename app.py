@@ -225,26 +225,26 @@ def make_html_table(df, room_id):
         top: 0;
         background: #0b66c2;
         color: #fff;
-        padding: 8px;
+        padding: 5px;
         text-align: center;
         border: 1px solid #0b66c2;
         z-index: 10;
     }
     tbody td {
-        padding: 8px;
+        padding: 5px;
         border-bottom: 1px solid #f2f2f2;
         text-align: center;
         vertical-align: middle;
         word-wrap: break-word;
     }
     /* カラム幅の指定 */
-    table col:nth-child(1) { width: 28%; } /* イベント名 */
-    table col:nth-child(2) { width: 15%; } /* 開始日時 */
-    table col:nth-child(3) { width: 15%; } /* 終了日時 */
+    table col:nth-child(1) { width: 38%; } /* イベント名 */
+    table col:nth-child(2) { width: 12%; } /* 開始日時 */
+    table col:nth-child(3) { width: 12%; } /* 終了日時 */
     table col:nth-child(4) { width: 7%; }  /* 順位 */
-    table col:nth-child(5) { width: 15%; } /* ポイント */
+    table col:nth-child(5) { width: 12%; } /* ポイント */
     table col:nth-child(6) { width: 7%; }  /* レベル */
-    table col:nth-child(7) { width: 13%; } /* 貢献ランク */
+    table col:nth-child(7) { width: 12%; } /* 貢献ランク */
     
     tr.ongoing{background:#fff8b3;}
     a.evlink{color:#0b57d0;text-decoration:none;}
@@ -254,7 +254,7 @@ def make_html_table(df, room_id):
         background:#0b57d0;
         color:white !important; /* !importantでテーブルのリンク色を上書き */
         border:none;
-        padding:4px 8px;
+        padding:4px 6px;
         border-radius:4px;
         cursor:pointer;
         text-decoration:none; /* 下線を消す */
