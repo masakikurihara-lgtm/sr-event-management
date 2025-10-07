@@ -36,7 +36,18 @@ def fmt_time(ts):
     if ts is None or ts == "" or (isinstance(ts, float) and pd.isna(ts)):
         return ""
     if isinstance(ts, str) and "/" in ts:
-        return ts.strip()
+        try:
+            # データベースから取得したゼロ埋めされていない文字列をパース（柔軟に対応するため、strptimeを使用）
+            dt_obj = datetime.strptime(ts.strip(), "%Y/%m/%d %H:%M")
+            # ゼロ埋め形式で再整形して返す
+            return dt_obj.strftime("%Y/%m/%d %H:%M")
+        except ValueError:
+            # 時刻部分がない場合も考慮して、日付のみの形式も試す
+            try:
+                 dt_obj = datetime.strptime(ts.strip(), "%Y/%m/%d")
+                 return dt_obj.strftime("%Y/%m/%d 00:00") # 時刻がない場合は 00:00 を付与
+            except ValueError:
+                 return ts.strip() # パースに失敗した場合は元の文字列を返す
     try:
         ts = int(float(ts))
         if ts > 20000000000:
