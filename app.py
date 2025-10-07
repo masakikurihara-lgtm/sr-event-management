@@ -476,7 +476,7 @@ elif room_id != "":
     df_show = df[disp_cols + ["is_ongoing", "__highlight_style", "URL", "ルームID"]].copy()
 
 # ----------------------------------------------------------------------
-# HTMLテーブル生成関数 (ライバーモード用 - 既存)
+# HTMLテーブル生成関数 (ライバーモード用 - 修正)
 # ----------------------------------------------------------------------
 def make_html_table_user(df, room_id):
     """ライバー用HTMLテーブルを生成（貢献ランクボタン風リンクあり、ポイントハイライトあり、開催中黄色ハイライト）"""
@@ -493,6 +493,25 @@ def make_html_table_user(df, room_id):
     tr.ongoing{background:#fff8b3;}
     a.evlink{color:#0b57d0;text-decoration:underline;}
     .rank-btn-link { background:#0b57d0; color:white !important; border:none; padding:4px 6px; border-radius:4px; cursor:pointer; text-decoration:none; display: inline-block; font-size: 12px; }
+    
+    /* ★★★ 修正箇所: イベント名 (1列目) の省略表示設定 ★★★ */
+    table tbody td:nth-child(1) {
+        text-align: left; /* イベント名は左寄せが自然 */
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    a.evlink {
+        color:#0b57d0;
+        text-decoration:underline;
+        display: block; /* <a>タグをブロック要素にする */
+        width: 100%;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    /* ★★★ 修正箇所終了 ★★★ */
+
     </style>
     <div class="scroll-table"><table>
     <colgroup><col><col><col><col><col><col><col></colgroup>
@@ -534,7 +553,7 @@ def make_html_table_user(df, room_id):
     return html
 
 # ----------------------------------------------------------------------
-# HTMLテーブル生成関数 (管理者モード用 - 修正済み)
+# HTMLテーブル生成関数 (管理者モード用 - 修正)
 # ----------------------------------------------------------------------
 def make_html_table_admin(df):
     """管理者用HTMLテーブルを生成（ライバー名列あり、ポイントハイライトなし、終了当日ハイライトあり）"""
@@ -565,6 +584,26 @@ def make_html_table_admin(df):
     a.evlink{{color:#0b57d0;text-decoration:underline;}}
     .rank-btn-link {{ background:#0b57d0; color:white !important; border:none; padding:4px 6px; border-radius:4px; cursor:pointer; text-decoration:none; display: inline-block; font-size: 12px; }}
     .liver-link {{ color:#0b57d0; text-decoration:underline; }}
+
+    /* ★★★ 修正箇所: ライバー名 (1列目) とイベント名 (2列目) の省略表示設定 ★★★ */
+    table tbody td:nth-child(1),
+    table tbody td:nth-child(2) {{ 
+        text-align: left; /* 名前やイベント名は左寄せが自然 */
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }}
+    a.evlink, .liver-link {{
+        color:#0b57d0;
+        text-decoration:underline;
+        display: block; /* <a>タグをブロック要素にする */
+        width: 100%;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }}
+    /* ★★★ 修正箇所終了 ★★★ */
+    
     </style>
     <div class="scroll-table"><table>
     <colgroup><col><col><col><col><col><col><col></colgroup>
