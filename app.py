@@ -10,14 +10,14 @@ JST = pytz.timezone("Asia/Tokyo")
 
 EVENT_DB_URL = "https://mksoul-pro.com/showroom/file/event_database.csv"
 API_ROOM_PROFILE = "https://www.showroom-live.com/api/room/profile"
-API_ROOM_EVENT_AND_SUPPORT = "https://www.showroom-live.com/api/room/event_and_support"
-HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; mksoul-view/1.3)"}
+API_ROOM_LIST = "https://www.showroom-live.com/api/event/room_list"
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; mksoul-view/1.4)"}
 
 st.set_page_config(page_title="SHOWROOM：参加イベント履歴ビューア", layout="wide")
 
 
 # ---------- Utility ----------
-def http_get_json(url, params=None, retries=2, timeout=8, backoff=0.5):
+def http_get_json(url, params=None, retries=3, timeout=8, backoff=0.6):
     for i in range(retries):
         try:
             r = requests.get(url, headers=HEADERS, params=params, timeout=timeout)
@@ -85,18 +85,19 @@ def get_room_name(room_id):
     return ""
 
 
-def get_event_and_support(room_id):
-    """現在参加中イベントの順位・ポイント・レベルを取得"""
-    data = http_get_json(API_ROOM_EVENT_AND_SUPPORT, params={"room_id": room_id})
-    if not data or "event" not in data:
+def get_event_stats_from_roomlist(event_id, room_id):
+    """event_id から room_list API を呼び出し、指定 room_id の rank/point/quest_level を返す"""
+    data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": 1})
+    if not data or "list" not in data:
         return None
-    event = data["event"]
-    ranking = event.get("ranking", {})
-    quest = event.get("quest", {})
-    rank = ranking.get("rank")
-    point = ranking.get("point")
-    quest_level = quest.get("quest_level")
-    return {"rank": rank, "point": point, "quest_level": quest_level}
+    for entry in data["list"]:
+        if str(entry.get("room_id")) == str(room_id):
+            return {
+                "rank": entry.get("rank") or entry.get("position"),
+                "point": entry.get("point") or entry.get("event_point") or entry.get("total_point"),
+                "quest_level": entry.get("quest_level") or entry.get("event_entry", {}).get("quest_level"),
+            }
+    return None
 
 
 # ---------- UI ----------
@@ -128,7 +129,7 @@ if df.empty:
     st.warning("該当データが見つかりません。")
     st.stop()
 
-# ---------- 最新ルーム名（ラベル表示） ----------
+# ---------- ライバー名表示 ----------
 room_name = get_room_name(room_id) if not is_admin else "（全データ表示中）"
 link_html = f'<a href="https://www.showroom-live.com/room/profile?room_id={room_id}" target="_blank">{room_name}</a>'
 st.markdown(
@@ -147,20 +148,21 @@ df.sort_values("__start_ts", ascending=False, inplace=True)
 now_ts = int(datetime.now(JST).timestamp())
 df["is_ongoing"] = df["__end_ts"].apply(lambda x: x and x > now_ts)
 
-# ---------- 開催中イベントの最新化 ----------
+# ---------- 開催中イベント最新化 ----------
 if not is_admin:
     ongoing = df[df["is_ongoing"]]
-    if not ongoing.empty:
-        new_data = get_event_and_support(room_id)
-        if new_data:
-            for idx in ongoing.index:
-                df.at[idx, "順位"] = new_data.get("rank")
-                df.at[idx, "ポイント"] = new_data.get("point")
-                df.at[idx, "レベル"] = new_data.get("quest_level")
+    for idx, row in ongoing.iterrows():
+        event_id = row.get("event_id")
+        stats = get_event_stats_from_roomlist(event_id, room_id)
+        if stats:
+            df.at[idx, "順位"] = stats.get("rank") or "-"
+            df.at[idx, "ポイント"] = stats.get("point") or 0
+            df.at[idx, "レベル"] = stats.get("quest_level") or 0
+        time.sleep(0.3)
 
 # ---------- 表示整形 ----------
 disp_cols = ["イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "URL"]
-df_show = df[disp_cols].copy()
+df_show = df[disp_cols + ["is_ongoing"]].copy()
 
 # ---------- HTMLテーブル ----------
 def make_html_table(df):
@@ -191,5 +193,5 @@ st.markdown(make_html_table(df_show), unsafe_allow_html=True)
 st.caption("黄色行は現在開催中（終了日時が未来）のイベントです。")
 
 # ---------- CSV出力 ----------
-csv_bytes = df_show.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+csv_bytes = df_show.drop(columns=["is_ongoing"]).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
 st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_history.csv")
