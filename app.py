@@ -183,8 +183,9 @@ def fetch_contribution_rank(event_id: str, room_id: str, top_n: int = 10):
     ]
 
 
-# ---------- HTMLテーブル生成 ----------
+# ---------- 表示構築 ----------
 def make_html_table(df):
+    """貢献ランク列付きHTMLテーブルを生成"""
     html = """
     <style>
     .scroll-table {height:520px;overflow-y:auto;border:1px solid #ddd;border-radius:6px;}
@@ -203,30 +204,26 @@ def make_html_table(df):
         cls = "ongoing" if r.get("is_ongoing") else ""
         url = r.get("URL") or ""
         name = r.get("イベント名") or ""
-        event_id = str(r.get("event_id") or "")
+        event_id = r.get("event_id") or ""
         link = f'<a class="evlink" href="{url}" target="_blank">{name}</a>' if url else name
 
         html += f'<tr class="{cls}">'
         html += f"<td>{link}</td><td>{r['開始日時']}</td><td>{r['終了日時']}</td>"
         html += f"<td>{r['順位']}</td><td>{r['ポイント']}</td><td>{r['レベル']}</td><td>"
-
-        # Streamlitボタンを個別に埋め込む
-        btn_key = f"rankbtn_{event_id}_{r['開始日時']}"
-        if st.button("▶ 貢献ランクを表示", key=btn_key):
-            st.session_state["show_rank_event"] = event_id
+        html += f"<form action='?show_rank={event_id}' method='post'><button type='submit' style='background:#0b57d0;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;'>▶ 貢献ランクを表示</button></form>"
         html += "</td></tr>"
     html += "</tbody></table></div>"
     return html
 
 
 # ---------- 表示 ----------
+query_params = st.experimental_get_query_params()
+show_rank_event = query_params.get("show_rank", [None])[0]
+
 st.markdown(make_html_table(df_show), unsafe_allow_html=True)
 st.caption("黄色行は現在開催中（終了日時が未来）のイベントです。")
 
-
 # ---------- ランキング表示 ----------
-show_rank_event = st.session_state.get("show_rank_event")
-
 if show_rank_event:
     with st.spinner("貢献ランキングを取得中..."):
         rank_data = fetch_contribution_rank(show_rank_event, room_id)
@@ -235,7 +232,6 @@ if show_rank_event:
         st.dataframe(pd.DataFrame(rank_data))
     else:
         st.info("ランキング情報が取得できません。")
-
 
 # ---------- CSV出力 ----------
 csv_bytes = df_show.drop(columns=["is_ongoing"]).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
