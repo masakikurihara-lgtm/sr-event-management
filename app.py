@@ -164,8 +164,8 @@ if not is_admin:
 disp_cols = ["イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "URL"]
 df_show = df[disp_cols + ["is_ongoing"]].copy()
 
-# ---------- HTMLテーブル（Streamlitバージョン） ----------
 
+# ---------- 貢献ランク取得 ----------
 def fetch_contribution_rank(event_id: str, room_id: str, top_n: int = 10):
     """貢献ランキングTOP10を取得"""
     url = f"https://www.showroom-live.com/api/event/contribution_ranking?event_id={event_id}&room_id={room_id}"
@@ -183,72 +183,105 @@ def fetch_contribution_rank(event_id: str, room_id: str, top_n: int = 10):
     ]
 
 
-# ---------- 表示テーブル ----------
+# ---------- 表示部 ----------
 st.markdown("""
 <style>
-.scroll-table {height:520px;overflow-y:auto;border:1px solid #ddd;border-radius:6px;}
-table{width:100%;border-collapse:collapse;font-size:14px;}
-thead th{position:sticky;top:0;background:#0b66c2;color:#fff;padding:8px;text-align:center;}
-tbody td{padding:8px;border-bottom:1px solid #f2f2f2;text-align:center;}
-tr.ongoing{background:#fff8b3;}
-a.evlink{color:#0b57d0;text-decoration:none;}
-.rank-table{width:80%;margin:6px auto;border:1px solid #ccc;border-radius:4px;font-size:13px;}
-.rank-table th{background:#eee;padding:4px;}
-.rank-table td{padding:4px;border-bottom:1px solid #ddd;}
+.event-table-container {
+    height: 520px;
+    overflow-y: auto;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 4px;
+}
+.event-header {
+    display: grid;
+    grid-template-columns: 3fr 1.5fr 1.5fr 0.8fr 1fr 0.8fr 1.2fr;
+    background: #0b66c2;
+    color: white;
+    padding: 6px;
+    font-weight: bold;
+    text-align: center;
+    position: sticky;
+    top: 0;
+}
+.event-row {
+    display: grid;
+    grid-template-columns: 3fr 1.5fr 1.5fr 0.8fr 1fr 0.8fr 1.2fr;
+    padding: 6px;
+    border-bottom: 1px solid #eee;
+    align-items: center;
+}
+.event-row.ongoing {
+    background: #fff8b3;
+}
+.evlink {
+    color: #0b57d0;
+    text-decoration: none;
+}
+.rank-table {
+    width: 90%;
+    margin: 6px auto;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.rank-table th {
+    background: #eee;
+    border: 1px solid #ddd;
+    padding: 4px;
+}
+.rank-table td {
+    border: 1px solid #ddd;
+    padding: 4px;
+    text-align: center;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# 表ヘッダー
+st.markdown('<div class="event-table-container">', unsafe_allow_html=True)
 st.markdown("""
-<div class="scroll-table">
-<table>
-<thead>
-<tr>
-<th>イベント名</th><th>開始日時</th><th>終了日時</th>
-<th>順位</th><th>ポイント</th><th>レベル</th><th>貢献ランク</th>
-</tr>
-</thead>
-<tbody>
+<div class="event-header">
+<div>イベント名</div>
+<div>開始日時</div>
+<div>終了日時</div>
+<div>順位</div>
+<div>ポイント</div>
+<div>レベル</div>
+<div>貢献ランク</div>
+</div>
 """, unsafe_allow_html=True)
 
-# 各行描画
 for idx, r in df_show.iterrows():
-    cls = "ongoing" if r.get("is_ongoing") else ""
-    url = r.get("URL") or ""
+    ongoing_class = "ongoing" if r.get("is_ongoing") else ""
     event_name = r.get("イベント名") or ""
-    event_id = r.get("event_id") or ""
-    link = f'<a class="evlink" href="{url}" target="_blank">{event_name}</a>' if url else event_name
+    event_url = r.get("URL") or ""
+    link_html = f'<a class="evlink" href="{event_url}" target="_blank">{event_name}</a>' if event_url else event_name
+    event_id = r.get("event_id")
 
     st.markdown(f"""
-    <tr class="{cls}">
-        <td>{link}</td>
-        <td>{r['開始日時']}</td>
-        <td>{r['終了日時']}</td>
-        <td>{r['順位']}</td>
-        <td>{r['ポイント']}</td>
-        <td>{r['レベル']}</td>
-        <td>
-    """, unsafe_allow_html=True)
+    <div class="event-row {ongoing_class}">
+        <div>{link_html}</div>
+        <div style="text-align:center;">{r['開始日時']}</div>
+        <div style="text-align:center;">{r['終了日時']}</div>
+        <div style="text-align:center;">{r['順位']}</div>
+        <div style="text-align:center;">{r['ポイント']}</div>
+        <div style="text-align:center;">{r['レベル']}</div>
+        <div style="text-align:center;">""", unsafe_allow_html=True)
 
-    # Streamlitボタンを右端に配置
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
-        if st.button(f"▶ 貢献ランクを表示 ({event_id})", key=f"rankbtn_{event_id}_{idx}"):
-            with st.spinner("ランキング取得中..."):
-                ranks = fetch_contribution_rank(event_id, room_id)
-            if ranks:
-                st.markdown("<table class='rank-table'><tr><th>順位</th><th>名前</th><th>ポイント</th></tr>", unsafe_allow_html=True)
-                for rnk in ranks:
-                    st.markdown(f"<tr><td>{rnk['順位']}</td><td>{rnk['名前']}</td><td>{rnk['ポイント']}</td></tr>", unsafe_allow_html=True)
-                st.markdown("</table>", unsafe_allow_html=True)
-            else:
-                st.info("ランキング情報が取得できません。")
+    btn_key = f"btn_rank_{idx}"
+    if st.button("▶ 貢献ランクを表示", key=btn_key):
+        with st.spinner("ランキング取得中..."):
+            ranks = fetch_contribution_rank(event_id, room_id)
+        if ranks:
+            st.markdown("<table class='rank-table'><tr><th>順位</th><th>名前</th><th>ポイント</th></tr>", unsafe_allow_html=True)
+            for rr in ranks:
+                st.markdown(f"<tr><td>{rr['順位']}</td><td>{rr['名前']}</td><td>{rr['ポイント']}</td></tr>", unsafe_allow_html=True)
+            st.markdown("</table>", unsafe_allow_html=True)
+        else:
+            st.info("ランキング情報が取得できません。")
 
-    st.markdown("</td></tr>", unsafe_allow_html=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
-# 表フッター
-st.markdown("</tbody></table></div>", unsafe_allow_html=True)
-
+st.markdown("</div>", unsafe_allow_html=True)
 st.caption("黄色行は現在開催中（終了日時が未来）のイベントです。")
 
 # ---------- CSV出力 ----------
