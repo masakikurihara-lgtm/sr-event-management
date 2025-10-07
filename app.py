@@ -211,6 +211,7 @@ def make_html_table(df, room_id):
         overflow-y: auto;
         border: 1px solid #ddd;
         border-radius: 6px;
+        text-align: center;
         width: 100%;
     }
     table {
