@@ -187,11 +187,13 @@ st.markdown("""
     /* リンクの色を継承させるため */
     color: #0b66c2;
     font-size: 17px; /* 大きすぎないフォントサイズ */
-    font-weight: 600;
+    /* font-weight: 600; を削除: 全体を太字にしない */
 }
+/* ルーム名のリンクに太字と下線を適用 */
 .room-label-box a {
     color: inherit; /* 親要素の色を継承 */
-    text-decoration: none;
+    font-weight: 700; /* ルーム名のみ太字 */
+    text-decoration: underline; /* ルーム名に下線 */
 }
 </style>
 """, unsafe_allow_html=True)
@@ -209,8 +211,7 @@ if is_admin:
 else:
     link_url = f"https://www.showroom-live.com/room/profile?room_id={room_id}"
     
-    # st.infoの代替として、カスタムCSSでラベル風の装飾を行う
-    # リンクを別タブで開く機能（target="_blank"）は維持
+    # CSSで太字と下線を制御するため、HTMLはシンプルにする
     label_html = f"""
     <div class="room-label-box">
         🎤 
