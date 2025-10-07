@@ -165,6 +165,7 @@ disp_cols = ["イベント名", "開始日時", "終了日時", "順位", "ポ�
 df_show = df[disp_cols + ["is_ongoing"]].copy()
 
 
+
 # ---------- 貢献ランク取得 ----------
 def fetch_contribution_rank(event_id: str, room_id: str, top_n: int = 10):
     """貢献ランキングTOP10を取得"""
@@ -183,105 +184,44 @@ def fetch_contribution_rank(event_id: str, room_id: str, top_n: int = 10):
     ]
 
 
-# ---------- 表示部 ----------
-st.markdown("""
-<style>
-.event-table-container {
-    height: 520px;
-    overflow-y: auto;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    padding: 4px;
-}
-.event-header {
-    display: grid;
-    grid-template-columns: 3fr 1.5fr 1.5fr 0.8fr 1fr 0.8fr 1.2fr;
-    background: #0b66c2;
-    color: white;
-    padding: 6px;
-    font-weight: bold;
-    text-align: center;
-    position: sticky;
-    top: 0;
-}
-.event-row {
-    display: grid;
-    grid-template-columns: 3fr 1.5fr 1.5fr 0.8fr 1fr 0.8fr 1.2fr;
-    padding: 6px;
-    border-bottom: 1px solid #eee;
-    align-items: center;
-}
-.event-row.ongoing {
-    background: #fff8b3;
-}
-.evlink {
-    color: #0b57d0;
-    text-decoration: none;
-}
-.rank-table {
-    width: 90%;
-    margin: 6px auto;
-    border-collapse: collapse;
-    font-size: 13px;
-}
-.rank-table th {
-    background: #eee;
-    border: 1px solid #ddd;
-    padding: 4px;
-}
-.rank-table td {
-    border: 1px solid #ddd;
-    padding: 4px;
-    text-align: center;
-}
-</style>
-""", unsafe_allow_html=True)
+# ---------- 表示 ----------
+st.markdown(
+    """
+    <style>
+    .ongoing-row {background-color:#fff8b3;border-radius:6px;}
+    .event-card {border:1px solid #ddd;border-radius:8px;padding:8px;margin-bottom:6px;}
+    .evlink {color:#0b57d0;text-decoration:none;font-weight:600;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-st.markdown('<div class="event-table-container">', unsafe_allow_html=True)
-st.markdown("""
-<div class="event-header">
-<div>イベント名</div>
-<div>開始日時</div>
-<div>終了日時</div>
-<div>順位</div>
-<div>ポイント</div>
-<div>レベル</div>
-<div>貢献ランク</div>
-</div>
-""", unsafe_allow_html=True)
-
-for idx, r in df_show.iterrows():
-    ongoing_class = "ongoing" if r.get("is_ongoing") else ""
-    event_name = r.get("イベント名") or ""
-    event_url = r.get("URL") or ""
+st.subheader("📋 イベント一覧")
+for _, r in df_show.iterrows():
+    ongoing = r.get("is_ongoing", False)
+    bg_cls = "ongoing-row" if ongoing else ""
+    event_name = r["イベント名"] or ""
+    event_url = r["URL"] or ""
     link_html = f'<a class="evlink" href="{event_url}" target="_blank">{event_name}</a>' if event_url else event_name
-    event_id = r.get("event_id")
 
-    st.markdown(f"""
-    <div class="event-row {ongoing_class}">
-        <div>{link_html}</div>
-        <div style="text-align:center;">{r['開始日時']}</div>
-        <div style="text-align:center;">{r['終了日時']}</div>
-        <div style="text-align:center;">{r['順位']}</div>
-        <div style="text-align:center;">{r['ポイント']}</div>
-        <div style="text-align:center;">{r['レベル']}</div>
-        <div style="text-align:center;">""", unsafe_allow_html=True)
+    with st.container():
+        st.markdown(f"<div class='event-card {bg_cls}'>{link_html}</div>", unsafe_allow_html=True)
 
-    btn_key = f"btn_rank_{idx}"
-    if st.button("▶ 貢献ランクを表示", key=btn_key):
-        with st.spinner("ランキング取得中..."):
-            ranks = fetch_contribution_rank(event_id, room_id)
-        if ranks:
-            st.markdown("<table class='rank-table'><tr><th>順位</th><th>名前</th><th>ポイント</th></tr>", unsafe_allow_html=True)
-            for rr in ranks:
-                st.markdown(f"<tr><td>{rr['順位']}</td><td>{rr['名前']}</td><td>{rr['ポイント']}</td></tr>", unsafe_allow_html=True)
-            st.markdown("</table>", unsafe_allow_html=True)
-        else:
-            st.info("ランキング情報が取得できません。")
+        cols = st.columns([2, 2, 1, 1, 1])
+        cols[0].write(f"🕒 開始: {r['開始日時']}")
+        cols[1].write(f"⏰ 終了: {r['終了日時']}")
+        cols[2].write(f"🏅 順位: {r['順位']}")
+        cols[3].write(f"💎 ポイント: {r['ポイント']}")
+        cols[4].write(f"📈 レベル: {r['レベル']}")
 
-    st.markdown("</div></div>", unsafe_allow_html=True)
+        with st.expander("▶ 貢献ランクを表示"):
+            with st.spinner("ランキング取得中..."):
+                ranks = fetch_contribution_rank(r["event_id"], room_id)
+            if ranks:
+                st.table(pd.DataFrame(ranks))
+            else:
+                st.info("ランキング情報が取得できません。")
 
-st.markdown("</div>", unsafe_allow_html=True)
 st.caption("黄色行は現在開催中（終了日時が未来）のイベントです。")
 
 # ---------- CSV出力 ----------
