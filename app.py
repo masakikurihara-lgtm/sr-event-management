@@ -134,8 +134,7 @@ room_name = get_room_name(room_id) if not is_admin else "（全データ表示�
 link_html = f'<a href="https://www.showroom-live.com/room/profile?room_id={room_id}" target="_blank">{room_name}</a>'
 st.markdown(
     f'<div style="font-size:22px;font-weight:700;color:#1a66cc;margin-bottom:12px;">{link_html} の参加イベント</div>',
-    unsafe_allow_html=True,
-)
+    unsafe_allow_html=True)
 
 # ---------- 日付整形＆ソート ----------
 df["開始日時"] = df["開始日時"].apply(fmt_time)
