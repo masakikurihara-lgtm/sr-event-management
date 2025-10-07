@@ -11,12 +11,13 @@ import pytz
 JST = pytz.timezone("Asia/Tokyo")
 EVENT_DB_URL = "https://mksoul-pro.com/showroom/file/event_database.csv"
 API_ROOM_LIST = "https://www.showroom-live.com/api/event/room_list"
-HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; mksoul-view/1.0)"}
+API_ROOM_PROFILE = "https://www.showroom-live.com/api/room/profile"
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; mksoul-view/1.1)"}
 
 st.set_page_config(page_title="SHOWROOM イベント履歴ビューア", layout="wide")
 
 # --- 共通関数 ---
-def http_get_json(url, params=None, retries=2, timeout=10, backoff=0.6):
+def http_get_json(url, params=None, retries=3, timeout=10, backoff=0.7):
     for i in range(retries):
         try:
             r = requests.get(url, headers=HEADERS, params=params, timeout=timeout)
@@ -29,7 +30,9 @@ def http_get_json(url, params=None, retries=2, timeout=10, backoff=0.6):
             time.sleep(backoff * (i + 1))
     return None
 
+
 def fmt_time(ts):
+    """Unix秒や文字列を 'YYYY/MM/DD HH:MM' に整形"""
     if pd.isna(ts) or ts == "":
         return ""
     try:
@@ -39,6 +42,7 @@ def fmt_time(ts):
         return datetime.fromtimestamp(ts, JST).strftime("%Y/%m/%d %H:%M")
     except Exception:
         return str(ts)
+
 
 def load_event_db():
     try:
@@ -50,6 +54,7 @@ def load_event_db():
     except Exception as e:
         st.error(f"イベントデータベースの取得に失敗しました: {e}")
         return pd.DataFrame()
+
 
 def update_live_fields(event_id, room_id):
     """開催中イベントなら rank/point/quest_level を最新化"""
@@ -66,137 +71,144 @@ def update_live_fields(event_id, room_id):
             }
     return None
 
+
+def get_latest_room_name(room_id):
+    """ルーム名をAPIから最新取得"""
+    data = http_get_json(API_ROOM_PROFILE, params={"room_id": room_id})
+    if data and "room_name" in data:
+        return data["room_name"]
+    return ""
+
+
 # --- メイン処理 ---
 st.title("🎤 SHOWROOM イベント履歴ビューア")
 
-# ルームID入力
 room_id = st.text_input("ルームIDを入力してください", value="")
-if not room_id.strip():
-    st.stop()
 
-# データ取得
-df = load_event_db()
-if df.empty:
-    st.stop()
+if st.button("表示する"):
+    if not room_id.strip():
+        st.warning("ルームIDを入力してください。")
+        st.stop()
 
-# 型整形
-for col in ["event_id", "URL", "ルームID", "イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル"]:
-    if col not in df.columns:
-        df[col] = ""
+    # --- データ取得 ---
+    df = load_event_db()
+    if df.empty:
+        st.stop()
 
-df = df[df["ルームID"].astype(str) == str(room_id).strip()]
-
-if df.empty:
-    st.warning("該当ルームのデータが見つかりません。")
-    st.stop()
-
-# --- 最新化 ---
-now = datetime.now(JST)
-for idx, row in df.iterrows():
-    try:
-        end_ts = row["終了日時"]
-        if end_ts and end_ts.strip() != "":
-            try:
-                end_dt = datetime.strptime(fmt_time(end_ts), "%Y/%m/%d %H:%M")
-            except Exception:
-                continue
-            if now < end_dt:
-                upd = update_live_fields(row["event_id"], room_id)
-                if upd:
-                    for k, v in upd.items():
-                        if k in df.columns:
-                            df.at[idx, k] = v
-    except Exception:
-        continue
-
-# --- フィルタ（プルダウン） ---
-st.sidebar.header("📅 日付フィルタ")
-start_dates = sorted(df["開始日時"].dropna().unique().tolist(), reverse=True)
-end_dates = sorted(df["終了日時"].dropna().unique().tolist(), reverse=True)
-
-selected_start = st.sidebar.selectbox("開始日で絞り込み", ["すべて"] + start_dates)
-selected_end = st.sidebar.selectbox("終了日で絞り込み", ["すべて"] + end_dates)
-
-if selected_start != "すべて":
-    df = df[df["開始日時"] == selected_start]
-if selected_end != "すべて":
-    df = df[df["終了日時"] == selected_end]
-
-# --- 表示整形 ---
-df["開始日時_fmt"] = df["開始日時"].apply(fmt_time)
-df["終了日時_fmt"] = df["終了日時"].apply(fmt_time)
-df = df.sort_values(by="開始日時_fmt", ascending=False)
-
-# 表示タイトル
-live_name = df["ライバー名"].dropna().unique().tolist()
-if live_name:
-    st.markdown(f"### 👤 {live_name[0]} さんのイベント履歴")
-else:
-    st.markdown(f"### 👤 ルームID: {room_id}")
-
-# --- ハイライト判定 ---
-def is_ongoing(row):
-    try:
-        end = datetime.strptime(row["終了日時_fmt"], "%Y/%m/%d %H:%M")
-        return datetime.now(JST) < end
-    except Exception:
-        return False
-
-# --- HTMLテーブル生成 ---
-def make_html_table(df_show):
-    cols = ["イベント名", "開始日時_fmt", "終了日時_fmt", "順位", "ポイント", "レベル"]
-    html = """
-    <style>
-    .scroll-table {
-        height: 500px;
-        overflow-y: scroll;
-        border: 1px solid #ccc;
-    }
-    table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 14px;
-    }
-    thead th {
-        position: sticky;
-        top: 0;
-        background-color: #0052cc;
-        color: white;
-        text-align: center;
-        padding: 8px;
-    }
-    td {
-        padding: 8px;
-        border-bottom: 1px solid #eee;
-        text-align: center;
-    }
-    tr.highlight {
-        background-color: #fff7cc;
-    }
-    </style>
-    <div class='scroll-table'><table><thead><tr>
-    """
+    # 型と欠損補正
+    cols = ["event_id", "URL", "ルームID", "イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル"]
     for c in cols:
-        html += f"<th>{c}</th>"
-    html += "</tr></thead><tbody>"
+        if c not in df.columns:
+            df[c] = ""
+    df = df[df["ルームID"].astype(str) == str(room_id).strip()]
 
-    for _, r in df_show.iterrows():
-        ongoing = is_ongoing(r)
-        tr_class = "highlight" if ongoing else ""
-        ev_name = r["イベント名"] or ""
-        url = r["URL"] or ""
-        ev_html = f'<a href="{url}" target="_blank">{ev_name}</a>' if url else ev_name
-        html += f"<tr class='{tr_class}'>"
-        html += f"<td>{ev_html}</td>"
-        html += f"<td>{r['開始日時_fmt']}</td>"
-        html += f"<td>{r['終了日時_fmt']}</td>"
-        html += f"<td>{r['順位']}</td>"
-        html += f"<td>{r['ポイント']}</td>"
-        html += f"<td>{r['レベル']}</td>"
-        html += "</tr>"
-    html += "</tbody></table></div>"
-    return html
+    if df.empty:
+        st.warning("該当ルームのデータが見つかりません。")
+        st.stop()
 
-# --- 表示 ---
-st.markdown(make_html_table(df), unsafe_allow_html=True)
-st.caption("※黄色の行は開催中イベントです。")
+    # --- 最新ルーム名取得 ---
+    live_name = get_latest_room_name(room_id)
+
+    # --- 最新化処理 ---
+    now = datetime.now(JST)
+    for idx, row in df.iterrows():
+        try:
+            end_ts = row["終了日時"]
+            if end_ts and end_ts.strip() != "":
+                end_dt = datetime.strptime(fmt_time(end_ts), "%Y/%m/%d %H:%M")
+                if now < end_dt:  # 現在時刻 < 終了時刻 → 開催中イベント
+                    upd = update_live_fields(row["event_id"], room_id)
+                    if upd:
+                        for k, v in upd.items():
+                            if k in df.columns:
+                                df.at[idx, k] = v
+        except Exception:
+            continue
+
+    # --- 日付整形 & ソート ---
+    df["開始日時"] = df["開始日時"].apply(fmt_time)
+    df["終了日時"] = df["終了日時"].apply(fmt_time)
+    df = df.sort_values(by="開始日時", ascending=False)
+
+    # --- 日付フィルタ（新しい順） ---
+    st.sidebar.header("📅 日付フィルタ")
+    start_dates = sorted(df["開始日時"].dropna().unique().tolist(), reverse=True)
+    end_dates = sorted(df["終了日時"].dropna().unique().tolist(), reverse=True)
+
+    selected_start = st.sidebar.selectbox("開始日で絞り込み", ["すべて"] + start_dates)
+    selected_end = st.sidebar.selectbox("終了日で絞り込み", ["すべて"] + end_dates)
+
+    if selected_start != "すべて":
+        df = df[df["開始日時"] == selected_start]
+    if selected_end != "すべて":
+        df = df[df["終了日時"] == selected_end]
+
+    # --- 表示タイトル ---
+    st.markdown(f"### 👤 {live_name or '不明'} さんのイベント履歴（ルームID: {room_id}）")
+
+    # --- ハイライト判定 ---
+    def is_ongoing(row):
+        try:
+            end = datetime.strptime(row["終了日時"], "%Y/%m/%d %H:%M")
+            return datetime.now(JST) < end
+        except Exception:
+            return False
+
+    # --- HTMLテーブル生成 ---
+    def make_html_table(df_show):
+        cols = ["イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル"]
+        html = """
+        <style>
+        .scroll-table {
+            height: 500px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        thead th {
+            position: sticky;
+            top: 0;
+            background-color: #0052cc;
+            color: white;
+            text-align: center;
+            padding: 8px;
+        }
+        td {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+            text-align: center;
+        }
+        tr.highlight {
+            background-color: #fff7cc;
+        }
+        </style>
+        <div class='scroll-table'><table><thead><tr>
+        """
+        for c in cols:
+            html += f"<th>{c}</th>"
+        html += "</tr></thead><tbody>"
+
+        for _, r in df_show.iterrows():
+            ongoing = is_ongoing(r)
+            tr_class = "highlight" if ongoing else ""
+            ev_name = r["イベント名"] or ""
+            url = r["URL"] or ""
+            ev_html = f'<a href="{url}" target="_blank">{ev_name}</a>' if url else ev_name
+            html += f"<tr class='{tr_class}'>"
+            html += f"<td>{ev_html}</td>"
+            html += f"<td>{r['開始日時']}</td>"
+            html += f"<td>{r['終了日時']}</td>"
+            html += f"<td>{r['順位']}</td>"
+            html += f"<td>{r['ポイント']}</td>"
+            html += f"<td>{r['レベル']}</td>"
+            html += "</tr>"
+        html += "</tbody></table></div>"
+        return html
+
+    st.markdown(make_html_table(df), unsafe_allow_html=True)
+    st.caption("※黄色の行は開催中イベントです。")
