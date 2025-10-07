@@ -11,7 +11,7 @@ JST = pytz.timezone("Asia/Tokyo")
 EVENT_DB_URL = "https://mksoul-pro.com/showroom/file/event_database.csv"
 API_ROOM_PROFILE = "https://www.showroom-live.com/api/room/profile"
 API_ROOM_EVENT_AND_SUPPORT = "https://www.showroom-live.com/api/room/event_and_support"
-HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; mksoul-view/1.2)"}
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; mksoul-view/1.3)"}
 
 st.set_page_config(page_title="SHOWROOM：参加イベント履歴ビューア", layout="wide")
 
@@ -32,7 +32,6 @@ def http_get_json(url, params=None, retries=2, timeout=8, backoff=0.5):
 
 
 def fmt_time(ts):
-    """Unix秒または'YYYY/MM/DD HH:MM'文字列を共通化"""
     if ts is None or ts == "" or (isinstance(ts, float) and pd.isna(ts)):
         return ""
     if isinstance(ts, str) and "/" in ts:
@@ -87,25 +86,27 @@ def get_room_name(room_id):
 
 
 def get_event_and_support(room_id):
+    """現在参加中イベントの順位・ポイント・レベルを取得"""
     data = http_get_json(API_ROOM_EVENT_AND_SUPPORT, params={"room_id": room_id})
-    if not data:
+    if not data or "event" not in data:
         return None
-    rank = data.get("rank") or "-"
-    point = data.get("point") or 0
-    quest = data.get("quest_level") or 0
-    return {"rank": rank, "point": point, "quest_level": quest}
+    event = data["event"]
+    ranking = event.get("ranking", {})
+    quest = event.get("quest", {})
+    rank = ranking.get("rank")
+    point = ranking.get("point")
+    quest_level = quest.get("quest_level")
+    return {"rank": rank, "point": point, "quest_level": quest_level}
 
 
 # ---------- UI ----------
 st.title("🎤 SHOWROOM：参加イベント履歴ビューア")
 
-with st.sidebar:
-    room_input = st.text_input("表示するルームIDを入力", value="")
-    st.caption("管理者用：mksp154851 で全件表示")
-    if st.button("表示する"):
-        do_show = True
-    else:
-        do_show = False
+room_input = st.text_input("表示するルームIDを入力", value="")
+if st.button("表示する"):
+    do_show = True
+else:
+    do_show = False
 
 if not do_show:
     st.info("ルームIDを入力して「表示する」を押してください。")
@@ -127,60 +128,41 @@ if df.empty:
     st.warning("該当データが見つかりません。")
     st.stop()
 
-# 最新ルーム名（ラベル表示）
+# ---------- 最新ルーム名（ラベル表示） ----------
 room_name = get_room_name(room_id) if not is_admin else "（全データ表示中）"
 link_html = f'<a href="https://www.showroom-live.com/room/profile?room_id={room_id}" target="_blank">{room_name}</a>'
-st.markdown(f'<div style="font-size:20px;font-weight:700;color:#1a66cc;margin-bottom:8px;">{link_html} の参加イベント</div>', unsafe_allow_html=True)
+st.markdown(
+    f'<div style="font-size:22px;font-weight:700;color:#1a66cc;margin-bottom:12px;">{link_html} の参加イベント</div>',
+    unsafe_allow_html=True,
+)
 
-# --- 日付整形＆ソート ---
+# ---------- 日付整形＆ソート ----------
 df["開始日時"] = df["開始日時"].apply(fmt_time)
 df["終了日時"] = df["終了日時"].apply(fmt_time)
 df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
 df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
 df.sort_values("__start_ts", ascending=False, inplace=True)
 
-# --- 日付フィルタ ---
-st.sidebar.markdown("---")
-st.sidebar.subheader("日付フィルタ")
-
-start_dates = df["開始日時"].dropna().unique().tolist()
-start_dates_sorted = sorted(start_dates, key=lambda x: parse_to_ts(x) or 0, reverse=True)
-selected_start = st.sidebar.selectbox("開始日", ["すべて"] + start_dates_sorted)
-
-end_dates = df["終了日時"].dropna().unique().tolist()
-end_dates_sorted = sorted(end_dates, key=lambda x: parse_to_ts(x) or 0, reverse=True)
-selected_end = st.sidebar.selectbox("終了日", ["すべて"] + end_dates_sorted)
-
-if selected_start != "すべて":
-    df = df[df["開始日時"] == selected_start]
-if selected_end != "すべて":
-    df = df[df["終了日時"] == selected_end]
-
-if df.empty:
-    st.info("条件に該当するデータはありません。")
-    st.stop()
-
-# --- 開催中判定 ---
+# ---------- 開催中判定 ----------
 now_ts = int(datetime.now(JST).timestamp())
 df["is_ongoing"] = df["__end_ts"].apply(lambda x: x and x > now_ts)
 
-# --- 開催中イベント最新化 ---
-ongoing = df[df["is_ongoing"]]
-if not ongoing.empty and not is_admin:
-    st.info(f"開催中イベント {len(ongoing)} 件を最新化します...")
-    new = get_event_and_support(room_id)
-    if new:
-        for idx in ongoing.index:
-            df.at[idx, "順位"] = new["rank"]
-            df.at[idx, "ポイント"] = new["point"]
-            df.at[idx, "レベル"] = new["quest_level"]
-        st.success("最新化完了。")
+# ---------- 開催中イベントの最新化 ----------
+if not is_admin:
+    ongoing = df[df["is_ongoing"]]
+    if not ongoing.empty:
+        new_data = get_event_and_support(room_id)
+        if new_data:
+            for idx in ongoing.index:
+                df.at[idx, "順位"] = new_data.get("rank")
+                df.at[idx, "ポイント"] = new_data.get("point")
+                df.at[idx, "レベル"] = new_data.get("quest_level")
 
-# --- 表示整形 ---
+# ---------- 表示整形 ----------
 disp_cols = ["イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "URL"]
 df_show = df[disp_cols].copy()
 
-# --- テーブル出力（HTML） ---
+# ---------- HTMLテーブル ----------
 def make_html_table(df):
     html = """
     <style>
@@ -188,7 +170,7 @@ def make_html_table(df):
     table{width:100%;border-collapse:collapse;font-size:14px;}
     thead th{position:sticky;top:0;background:#0b66c2;color:#fff;padding:8px;text-align:center;}
     tbody td{padding:8px;border-bottom:1px solid #f2f2f2;text-align:center;}
-    tr.ongoing{background:#fff7cc;}
+    tr.ongoing{background:#fff8b3;}
     a.evlink{color:#0b57d0;text-decoration:none;}
     </style>
     <div class="scroll-table"><table><thead><tr>
@@ -208,6 +190,6 @@ def make_html_table(df):
 st.markdown(make_html_table(df_show), unsafe_allow_html=True)
 st.caption("黄色行は現在開催中（終了日時が未来）のイベントです。")
 
-# --- CSV出力 ---
+# ---------- CSV出力 ----------
 csv_bytes = df_show.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
 st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_history.csv")
