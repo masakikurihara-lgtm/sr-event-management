@@ -179,50 +179,83 @@ def fetch_contribution_rank(event_id: str, room_id: str, top_n: int = 10):
     ]
 
 
-# ---------- HTMLテーブル ----------
-def make_html_table(df):
-    html = """
-    <style>
-    .scroll-table {height:520px;overflow-y:auto;border:1px solid #ddd;border-radius:6px;}
-    table{width:100%;border-collapse:collapse;font-size:14px;}
-    thead th{position:sticky;top:0;background:#0b66c2;color:#fff;padding:8px;text-align:center;}
-    tbody td{padding:8px;border-bottom:1px solid #f2f2f2;text-align:center;vertical-align:middle;}
-    tr.ongoing{background:#fff8b3;}
-    a.evlink{color:#0b57d0;text-decoration:none;}
-    .rank-table{width:80%;margin:6px auto;border:1px solid #ccc;border-radius:4px;font-size:13px;}
-    .rank-table th{background:#eee;padding:4px;}
-    .rank-table td{padding:4px;border-bottom:1px solid #ddd;}
-    </style>
-    <div class="scroll-table"><table><thead><tr>
-    <th>イベント名</th><th>開始日時</th><th>終了日時</th>
-    <th>順位</th><th>ポイント</th><th>レベル</th><th>貢献ランク</th>
-    </tr></thead><tbody>
-    """
-    for _, r in df.iterrows():
-        cls = "ongoing" if r.get("is_ongoing") else ""
-        url = r.get("URL") or ""
-        name = r.get("イベント名") or ""
-        event_id = str(r.get("event_id") or "")
-        link = f'<a class="evlink" href="{url}" target="_blank">{name}</a>' if url else name
-        contrib_url = f"https://www.showroom-live.com/event/contribution_ranking?event_id={event_id}&room_id={room_id}"
-
-        html += f'<tr class="{cls}">'
-        html += (
-            f"<td>{link}</td>"
-            f"<td>{r['開始日時']}</td><td>{r['終了日時']}</td>"
-            f"<td>{r['順位']}</td><td>{r['ポイント']}</td><td>{r['レベル']}</td>"
-            f'<td><a href="{contrib_url}" target="_blank" style="text-decoration:none;color:#0b57d0;">▶ 貢献ランクを表示</a></td>'
-            "</tr>"
-        )
-
-    html += "</tbody></table></div>"
-    return html
-
+# ---------- テーブル風レイアウト ----------
+st.markdown("""
+<style>
+.table-wrap {
+    border:1px solid #ddd;border-radius:6px;
+    overflow-y:auto;height:520px;
+}
+.table-row {
+    display:grid;
+    grid-template-columns: 25% 15% 15% 10% 15% 10% 10%;
+    padding:6px 4px;
+    border-bottom:1px solid #f2f2f2;
+    align-items:center;
+    text-align:center;
+}
+.table-header {
+    position:sticky;top:0;
+    background:#0b66c2;color:white;
+    font-weight:700;
+}
+.table-row.ongoing {
+    background:#fff8b3;
+}
+.rank-table {
+    width:90%;margin:4px auto;border:1px solid #ccc;border-radius:4px;font-size:13px;
+}
+.rank-table th {
+    background:#eee;padding:4px;
+}
+.rank-table td {
+    padding:4px;border-bottom:1px solid #ddd;text-align:center;
+}
+.evlink {
+    color:#0b57d0;text-decoration:none;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ---------- 表示 ----------
-st.markdown(make_html_table(df_show), unsafe_allow_html=True)
-st.caption("黄色行は現在開催中（終了日時が未来）のイベントです。")
+st.markdown('<div class="table-wrap">', unsafe_allow_html=True)
+st.markdown("""
+<div class="table-row table-header">
+<div>イベント名</div><div>開始日時</div><div>終了日時</div>
+<div>順位</div><div>ポイント</div><div>レベル</div><div>貢献ランク</div>
+</div>
+""", unsafe_allow_html=True)
 
+for _, r in df_show.iterrows():
+    cls = "ongoing" if r.get("is_ongoing") else ""
+    name = r.get("イベント名") or ""
+    url = r.get("URL") or ""
+    event_id = r.get("event_id") or ""
+    link = f'<a class="evlink" href="{url}" target="_blank">{name}</a>' if url else name
+
+    st.markdown(f'<div class="table-row {cls}">', unsafe_allow_html=True)
+    st.markdown(f"<div>{link}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div>{r['開始日時']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div>{r['終了日時']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div>{r['順位']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div>{r['ポイント']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div>{r['レベル']}</div>", unsafe_allow_html=True)
+
+    key = f"rank_{event_id}_{r['開始日時']}"
+    if st.button("▶ 貢献ランクを表示", key=key):
+        ranks = fetch_contribution_rank(event_id, room_id)
+        if ranks:
+            st.markdown("<table class='rank-table'><tr><th>順位</th><th>名前</th><th>ポイント</th></tr>", unsafe_allow_html=True)
+            for rr in ranks:
+                st.markdown(f"<tr><td>{rr['順位']}</td><td>{rr['名前']}</td><td>{rr['ポイント']}</td></tr>", unsafe_allow_html=True)
+            st.markdown("</table>", unsafe_allow_html=True)
+        else:
+            st.info("ランキング情報が取得できませんでした。")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+st.caption("黄色行は現在開催中（終了日時が未来）のイベントです。")
 
 # ---------- CSV出力 ----------
 csv_bytes = df_show.drop(columns=["is_ongoing"]).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
