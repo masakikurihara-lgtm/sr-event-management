@@ -41,6 +41,7 @@ def fmt_time(ts):
         ts = int(float(ts))
         if ts > 20000000000:
             ts = ts // 1000
+        # ★★★ 修正箇所: 月日と時刻をゼロ埋め形式 (%Y/%m/%d %H:%M) に変更 ★★★
         return datetime.fromtimestamp(ts, JST).strftime("%Y/%m/%d %H:%M")
     except Exception:
         return ""
@@ -57,9 +58,14 @@ def parse_to_ts(val):
     except Exception:
         pass
     try:
+        # 時刻込みの形式を優先してパース
         return int(datetime.strptime(val, "%Y/%m/%d %H:%M").timestamp())
     except Exception:
-        return None
+        # 日付のみの形式も試す
+        try:
+            return int(datetime.strptime(val, "%Y/%m/%d").timestamp())
+        except Exception:
+            return None
 
 
 def load_event_db(url):
