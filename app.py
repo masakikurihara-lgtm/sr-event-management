@@ -5,6 +5,7 @@ import io
 import time
 from datetime import datetime
 import pytz
+import re # URL解析のためにreモジュールを追加
 
 JST = pytz.timezone("Asia/Tokyo")
 
@@ -99,6 +100,23 @@ def get_event_stats_from_roomlist(event_id, room_id):
             }
     return None
 
+# 貢献ランク取得関数は、今回は直接リンクを開くため使用しませんが、既存ロジックとして残します。
+def fetch_contribution_rank(event_id: str, room_id: str, top_n: int = 10):
+    """貢献ランキングTOP10を取得"""
+    url = f"https://www.showroom-live.com/api/event/contribution_ranking?event_id={event_id}&room_id={room_id}"
+    data = http_get_json(url)
+    if not data:
+        return []
+    ranking = data.get("ranking") or data.get("contribution_ranking") or []
+    return [
+        {
+            "順位": r.get("rank"),
+            "名前": r.get("name"),
+            "ポイント": f"{r.get('point', 0):,}"
+        }
+        for r in ranking[:top_n]
+    ]
+
 
 # ---------- UI ----------
 st.title("🎤 SHOWROOM：参加イベント履歴ビューア")
@@ -124,6 +142,7 @@ if df_all.empty:
     st.stop()
 
 is_admin = (room_id == "mksp154851")
+# df_allのルームID列をroom_idと同じ型(str)に変換してからフィルタリング
 df = df_all if is_admin else df_all[df_all["ルームID"].astype(str) == str(room_id)].copy()
 if df.empty:
     st.warning("該当データが見つかりません。")
@@ -164,38 +183,90 @@ if not is_admin:
 disp_cols = ["イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "URL"]
 df_show = df[disp_cols + ["is_ongoing"]].copy()
 
-
-# ---------- 貢献ランク取得 ----------
-def fetch_contribution_rank(event_id: str, room_id: str, top_n: int = 10):
-    """貢献ランキングTOP10を取得"""
-    url = f"https://www.showroom-live.com/api/event/contribution_ranking?event_id={event_id}&room_id={room_id}"
-    data = http_get_json(url)
-    if not data:
-        return []
-    ranking = data.get("ranking") or data.get("contribution_ranking") or []
-    return [
-        {
-            "順位": r.get("rank"),
-            "名前": r.get("name"),
-            "ポイント": f"{r.get('point', 0):,}"
-        }
-        for r in ranking[:top_n]
-    ]
+# ---------- 貢献ランクURL生成ロジック ----------
+def generate_contribution_url(event_url, room_id):
+    """
+    イベントURLからURLキーを取得し、貢献ランキングのURLを生成する。
+    例: https://www.showroom-live.com/event/mattari_fireworks249 -> mattari_fireworks249
+    生成: https://www.showroom-live.com/event/contribution/mattari_fireworks249?room_id=ROOM_ID
+    """
+    if not event_url:
+        return None
+    # URLの最後の階層部分（URLキー）を正規表現で抽出
+    match = re.search(r'/event/([^/]+)/?$', event_url)
+    if match:
+        url_key = match.group(1)
+        return f"https://www.showroom-live.com/event/contribution/{url_key}?room_id={room_id}"
+    return None
 
 
-# ---------- 表示構築 ----------
-def make_html_table(df):
-    """貢献ランク列付きHTMLテーブルを生成"""
+# ---------- 表示構築（HTMLテーブル）----------
+def make_html_table(df, room_id):
+    """貢献ランク列付きHTMLテーブルを生成し、リンクを別タブで開くように修正"""
     html = """
     <style>
-    .scroll-table {height:520px;overflow-y:auto;border:1px solid #ddd;border-radius:6px;}
-    table{width:100%;border-collapse:collapse;font-size:14px;}
-    thead th{position:sticky;top:0;background:#0b66c2;color:#fff;padding:8px;text-align:center;}
-    tbody td{padding:8px;border-bottom:1px solid #f2f2f2;text-align:center;vertical-align:middle;}
+    /* レイアウトの安定化とスクロール機能のCSS */
+    .scroll-table {
+        max-height: 520px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        width: 100%;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+        table-layout: fixed;
+    }
+    thead th {
+        position: sticky;
+        top: 0;
+        background: #0b66c2;
+        color: #fff;
+        padding: 8px;
+        text-align: center;
+        border: 1px solid #0b66c2;
+        z-index: 10;
+    }
+    tbody td {
+        padding: 8px;
+        border-bottom: 1px solid #f2f2f2;
+        text-align: center;
+        vertical-align: middle;
+        word-wrap: break-word;
+    }
+    /* カラム幅の指定 */
+    table col:nth-child(1) { width: 28%; } /* イベント名 */
+    table col:nth-child(2) { width: 15%; } /* 開始日時 */
+    table col:nth-child(3) { width: 15%; } /* 終了日時 */
+    table col:nth-child(4) { width: 7%; }  /* 順位 */
+    table col:nth-child(5) { width: 15%; } /* ポイント */
+    table col:nth-child(6) { width: 7%; }  /* レベル */
+    table col:nth-child(7) { width: 13%; } /* 貢献ランク */
+    
     tr.ongoing{background:#fff8b3;}
     a.evlink{color:#0b57d0;text-decoration:none;}
+
+    /* 貢献ランクボタン風リンクのCSS */
+    .rank-btn-link {
+        background:#0b57d0;
+        color:white !important; /* !importantでテーブルのリンク色を上書き */
+        border:none;
+        padding:4px 8px;
+        border-radius:4px;
+        cursor:pointer;
+        text-decoration:none; /* 下線を消す */
+        display: inline-block; /* ボタンのように振る舞う */
+        white-space: nowrap; /* テキストの折り返しを防ぐ */
+        font-size: 12px;
+    }
     </style>
-    <div class="scroll-table"><table><thead><tr>
+    <div class="scroll-table"><table>
+    <colgroup>
+        <col><col><col><col><col><col><col>
+    </colgroup>
+    <thead><tr>
     <th>イベント名</th><th>開始日時</th><th>終了日時</th>
     <th>順位</th><th>ポイント</th><th>レベル</th><th>貢献ランク</th>
     </tr></thead><tbody>
@@ -204,34 +275,37 @@ def make_html_table(df):
         cls = "ongoing" if r.get("is_ongoing") else ""
         url = r.get("URL") or ""
         name = r.get("イベント名") or ""
-        event_id = r.get("event_id") or ""
-        link = f'<a class="evlink" href="{url}" target="_blank">{name}</a>' if url else name
+        # ポイントをカンマ区切りにし、欠損値やハイフンの場合はそのまま表示
+        point_raw = r.get('ポイント')
+        point = f"{float(point_raw):,.0f}" if pd.notna(point_raw) and str(point_raw) not in ('-', '') else str(point_raw or '')
+        
+        event_link = f'<a class="evlink" href="{url}" target="_blank">{name}</a>' if url else name
+        
+        # 貢献ランクURLを生成
+        contrib_url = generate_contribution_url(url, room_id)
+        
+        if contrib_url:
+            # <a>タグをボタン風に装飾し、target="_blank" で別タブで開く
+            button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">▶ 貢献ランクを確認</a>'
+        else:
+            button_html = "<span>URLなし</span>" # URLが取得できない場合はボタンを表示しない
 
         html += f'<tr class="{cls}">'
-        html += f"<td>{link}</td><td>{r['開始日時']}</td><td>{r['終了日時']}</td>"
-        html += f"<td>{r['順位']}</td><td>{r['ポイント']}</td><td>{r['レベル']}</td><td>"
-        html += f"<form action='?show_rank={event_id}' method='post'><button type='submit' style='background:#0b57d0;color:white;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;'>▶ 貢献ランクを表示</button></form>"
-        html += "</td></tr>"
+        html += f"<td>{event_link}</td><td>{r['開始日時']}</td><td>{r['終了日時']}</td>"
+        html += f"<td>{r['順位']}</td><td>{point}</td><td>{r['レベル']}</td><td>{button_html}</td>"
+        html += "</tr>"
+        
     html += "</tbody></table></div>"
     return html
 
 
 # ---------- 表示 ----------
-query_params = st.experimental_get_query_params()
-show_rank_event = query_params.get("show_rank", [None])[0]
 
-st.markdown(make_html_table(df_show), unsafe_allow_html=True)
+# HTMLテーブルで表示することで、レイアウトの安定化とスクロール機能を両立
+st.markdown(make_html_table(df_show, room_id), unsafe_allow_html=True)
 st.caption("黄色行は現在開催中（終了日時が未来）のイベントです。")
 
-# ---------- ランキング表示 ----------
-if show_rank_event:
-    with st.spinner("貢献ランキングを取得中..."):
-        rank_data = fetch_contribution_rank(show_rank_event, room_id)
-    st.markdown(f"### 🎯 イベントID {show_rank_event} の貢献ランキング")
-    if rank_data:
-        st.dataframe(pd.DataFrame(rank_data))
-    else:
-        st.info("ランキング情報が取得できません。")
+# 貢献ランクの展開機能はHTMLテーブルの制約により削除
 
 # ---------- CSV出力 ----------
 csv_bytes = df_show.drop(columns=["is_ongoing"]).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
