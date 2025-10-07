@@ -67,7 +67,7 @@ def fmt_time(ts):
                 return dt_obj.strftime("%Y/%m/%d 00:00")
             except ValueError:
                 # どの形式でもパースできない場合は、元の文字列を返す
-                return ts_strip 
+                return ts_strip  
     try:
         ts = int(float(ts))
         if ts > 20000000000:
@@ -478,7 +478,7 @@ def make_html_table_user(df, room_id):
     for _, r in df.iterrows():
         # ライバーモードでは is_ongoing のみ
         cls = "ongoing" if r.get("is_ongoing") else ""
-        # ★★★ 修正: 欠損値対策（pd.notna）を導入し、既存コードの脆弱性を修正 ★★★
+        # ★★★ 修正: 欠損値対策（pd.notna）をチェック（防御的） ★★★
         url_value = r.get("URL")
         url = url_value if pd.notna(url_value) and url_value else ""
         name = r.get("イベント名") or ""
@@ -508,10 +508,15 @@ def make_html_table_user(df, room_id):
     return html
 
 # ----------------------------------------------------------------------
-# HTMLテーブル生成関数 (管理者モード用 - 新規追加/修正)
+# HTMLテーブル生成関数 (管理者モード用 - 修正済み)
 # ----------------------------------------------------------------------
 def make_html_table_admin(df):
     """管理者用HTMLテーブルを生成（ライバー名列あり、ポイントハイライトなし、終了当日ハイライトあり）"""
+    
+    # ★★★ 修正: END_TODAY_HIGHLIGHTからカラーコードを抽出し、CSSの二重定義を回避 ★★★
+    # END_TODAY_HIGHLIGHTは "background-color: #ffb2b2;" なので、カラーコードのみを抽出
+    end_today_color_code = END_TODAY_HIGHLIGHT.replace('background-color: ', '').replace(';', '')
+    
     # ★★★ 修正 (1. URL項目の削除): カラム幅を7列に変更し、URL/貢献ランク列を削除 ★★★
     html = f"""
     <style>
@@ -529,7 +534,8 @@ def make_html_table_admin(df):
     table col:nth-child(6) {{ width: 12%; }} /* ポイント */
     table col:nth-child(7) {{ width: 6%; }}  /* レベル */
     
-    tr.end_today{{background:{END_TODAY_HIGHLIGHT};}} /* 終了日時当日ハイライト */
+    /* 修正: background-colorプロパティを正しく適用 */
+    tr.end_today{{background-color:{end_today_color_code};}} /* 終了日時当日ハイライト */
     tr.ongoing{{background:#fff8b3;}} /* 開催中黄色ハイライト */
     a.evlink{{color:#0b57d0;text-decoration:none;}}
     .rank-btn-link {{ background:#0b57d0; color:white !important; border:none; padding:4px 6px; border-radius:4px; cursor:pointer; text-decoration:none; display: inline-block; font-size: 12px; }}
@@ -590,7 +596,10 @@ def make_html_table_admin(df):
 if is_admin:
     # 管理者モードの表示
     st.markdown(make_html_table_admin(df_show), unsafe_allow_html=True)
-    st.caption(f"黄色行は開催中（終了日時が未来）のイベントです。赤っぽい行（{END_TODAY_HIGHLIGHT.replace('background-color: ', '').replace(';', '')}）は終了日時が今日当日のイベントです。")
+    
+    # 修正: キャプションをEND_TODAY_HIGHLIGHTを適切に表示するように変更
+    end_today_color = END_TODAY_HIGHLIGHT.replace('background-color: ', '').replace(';', '')
+    st.caption(f"黄色行は開催中（終了日時が未来）のイベントです。赤っぽい行（{end_today_color}）は終了日時が今日当日のイベントです。")
     
     # CSVダウンロード
     # 管理者モードでは is_ongoing, is_end_today, __point_num などを削除
