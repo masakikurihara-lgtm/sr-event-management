@@ -173,11 +173,18 @@ if df.empty:
 
 # ---------- ライバー名表示 ----------
 room_name = get_room_name(room_id) if not is_admin else "（全データ表示中）"
-link_html = f'<a href="https://www.showroom-live.com/room/profile?room_id={room_id}" target="_blank">{room_name}</a>'
-st.markdown(
-    f'<div style="font-size:22px;font-weight:700;color:#1a66cc;margin-bottom:12px;">{link_html} の参加イベント</div>',
-    unsafe_allow_html=True,
-)
+
+if is_admin:
+    # 管理者モード（全データ表示）の場合
+    st.info(f"**全データ表示中**")
+else:
+    # 通常表示の場合: 添付画像1点目のような見出し風ラベルに
+    link_url = f"https://www.showroom-live.com/room/profile?room_id={room_id}"
+    # Markdownで絵文字、太字、リンクを組み合わせ、h3相当の大きさに
+    st.markdown(
+        f'## 📛 <a href="{link_url}" target="_blank" style="color:#1a66cc; text-decoration:none;">{room_name}</a> の参加イベント',
+        unsafe_allow_html=True,
+    )
 
 # ---------- 日付整形＆ソート ----------
 df["開始日時"] = df["開始日時"].apply(fmt_time)
@@ -187,7 +194,7 @@ df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
 df.sort_values("__start_ts", ascending=False, inplace=True)
 
 # --------------------
-# ★★★ 追記: 2023年9月1日以降のイベントにフィルタリング ★★★
+# ★★★ 2023年9月1日以降のイベントにフィルタリング ★★★
 # __start_tsがFILTER_START_TS以上のイベントのみを抽出
 df = df[df["__start_ts"] >= FILTER_START_TS].copy()
 # --------------------
