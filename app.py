@@ -186,6 +186,10 @@ if 'admin_start_date' not in st.session_state:
     st.session_state.admin_start_date = None
 if 'admin_end_date' not in st.session_state:
     st.session_state.admin_end_date = None
+# ★★★ 管理者モード用 ルーム名キャッシュ ★★★
+if 'room_name_cache' not in st.session_state:
+    st.session_state.room_name_cache = {}
+
 
 def toggle_sort_by_point():
     """ソート状態を切り替えるコールバック関数"""
@@ -321,7 +325,29 @@ if is_admin:
         df_filtered = df_filtered[df_filtered["終了日時"].str.startswith(selected_end_date)].copy()
     if selected_start_date != "全期間":
         df_filtered = df_filtered[df_filtered["開始日時"].str.startswith(selected_start_date)].copy()
+        
+    # ★★★ 4.5. 修正点: ライバー名の最新化 (APIから取得し、キャッシュ) ★★★
+    # キャッシュを保持 (セッションステートで定義済み)
+    unique_room_ids = [rid for rid in df_filtered["ルームID"].unique() if rid and str(rid) != '']
+    room_ids_to_fetch = [rid for rid in unique_room_ids if str(rid) not in st.session_state.room_name_cache]
 
+    if room_ids_to_fetch:
+        with st.spinner(f"ライバー名 ({len(room_ids_to_fetch)}件) を最新化中..."):
+            for room_id_val in room_ids_to_fetch:
+                room_id_str = str(room_id_val)
+                # get_room_name は既存の関数
+                name = get_room_name(room_id_str)
+                # 成功した場合のみキャッシュを更新
+                if name:
+                    st.session_state.room_name_cache[room_id_str] = name
+                time.sleep(0.05) # API負荷軽減
+
+    # キャッシュからライバー名を適用する (API名があればそれを使用。なければCSVのライバー名を使用)
+    df_filtered["__display_liver_name"] = df_filtered.apply(
+        lambda row: st.session_state.room_name_cache.get(str(row["ルームID"])) or row["ライバー名"], 
+        axis=1
+    )
+    # -------------------------------------------------------------------
 
     # 5. 開催中イベント最新化
     # 最新化ボタンが押された場合、または初回ロード時に実行（ただし今回はボタン制御のみ）
@@ -348,8 +374,8 @@ if is_admin:
     # 7. 表示整形
     # ★★★ 修正 (1. URL項目の削除): URLを disp_cols から除外 (disp_colsには元々無いが、df_showの生成から除外)
     disp_cols = ["ライバー名", "イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル"]
-    # is_ongoing, is_end_todayを追加して、HTML生成で利用
-    df_show = df_filtered[disp_cols + ["is_ongoing", "is_end_today", "URL", "ルームID"]].copy()
+    # is_ongoing, is_end_today, __display_liver_name を追加して、HTML生成で利用
+    df_show = df_filtered[disp_cols + ["is_ongoing", "is_end_today", "URL", "ルームID", "__display_liver_name"]].copy()
 
     if df_show.empty:
         st.warning("フィルタリング条件に合うデータが見つかりません。")
@@ -513,8 +539,7 @@ def make_html_table_user(df, room_id):
 def make_html_table_admin(df):
     """管理者用HTMLテーブルを生成（ライバー名列あり、ポイントハイライトなし、終了当日ハイライトあり）"""
     
-    # ★★★ 修正: END_TODAY_HIGHLIGHTからカラーコードを抽出し、CSSの二重定義を回避 ★★★
-    # END_TODAY_HIGHLIGHTは "background-color: #ffb2b2;" なので、カラーコードのみを抽出
+    # END_TODAY_HIGHLIGHTからカラーコードを抽出し、CSSの二重定義を回避
     end_today_color_code = END_TODAY_HIGHLIGHT.replace('background-color: ', '').replace(';', '')
     
     # ★★★ 修正 (1. URL項目の削除): カラム幅を7列に変更し、URL/貢献ランク列を削除 ★★★
@@ -560,7 +585,8 @@ def make_html_table_admin(df):
         room_id = room_id_value if pd.notna(room_id_value) and room_id_value else ""
 
         name = r.get("イベント名") or ""
-        liver_name = r.get("ライバー名") or ""
+        # ★★★ 修正箇所: API取得名 (__display_liver_name) を優先して使用 ★★★
+        liver_name = r.get("__display_liver_name") or r.get("ライバー名") or ""
         
         # ポイントをカンマ区切りにし、欠損値やハイフンの場合はそのまま表示
         point_raw = r.get('ポイント')
@@ -602,8 +628,9 @@ if is_admin:
     st.caption(f"黄色行は開催中（終了日時が未来）のイベントです。赤っぽい行（{end_today_color}）は終了日時が今日当日のイベントです。")
     
     # CSVダウンロード
-    # 管理者モードでは is_ongoing, is_end_today, __point_num などを削除
-    cols_to_drop = [c for c in ["is_ongoing", "is_end_today", "__point_num", "URL", "ルームID"] if c in df_show.columns]
+    # 管理者モードでは is_ongoing, is_end_today, __point_num, __display_liver_name などを削除
+    # ★★★ 修正箇所: __display_liver_name を削除対象に追加 ★★★
+    cols_to_drop = [c for c in ["is_ongoing", "is_end_today", "__point_num", "URL", "ルームID", "__display_liver_name"] if c in df_show.columns]
     csv_bytes = df_show.drop(columns=cols_to_drop).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
     st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_history_admin.csv", key="admin_csv_download")
 
