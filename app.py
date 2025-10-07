@@ -245,7 +245,8 @@ df_all = st.session_state.df_all.copy() # コピーを使用して、元のセ�
 
 if is_admin:
     # --- 管理者モードのデータ処理 ---
-    st.info(f"**管理者モード：全データ表示中**")
+    # ★★★ 修正 (2. 文言表記の修正) ★★★
+    st.info(f"**管理者モード**")
 
     # 1. 日付整形とタイムスタンプ追加 (全量)
     df = df_all.copy()
@@ -295,6 +296,13 @@ if is_admin:
     # 4. フィルタリングの適用
     df_filtered = df.copy()
 
+    # ★★★ 修正 (3. 全量表示時のフィルタリング基準追加) ★★★
+    # 2023年9月1日以降に開始のイベントに限定（ライバーモードと同じ基準）
+    df_filtered = df_filtered[
+        (df_filtered["__start_ts"].apply(lambda x: pd.notna(x) and x >= FILTER_START_TS))
+        | (df_filtered["__start_ts"].isna()) # タイムスタンプに変換できない行も一応含める
+    ].copy()
+
     # デフォルトフィルタリング（全量表示がOFFの場合）
     if not st.session_state.admin_full_data:
         # 終了日時が10日前以降のイベントに絞り込み
@@ -333,6 +341,7 @@ if is_admin:
     df_filtered.sort_values("__end_ts", ascending=False, na_position='last', inplace=True)
     
     # 7. 表示整形
+    # ★★★ 修正 (1. URL項目の削除): URLを disp_cols から除外 (disp_colsには元々無いが、df_showの生成から除外)
     disp_cols = ["ライバー名", "イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル"]
     # is_ongoing, is_end_todayを追加して、HTML生成で利用
     df_show = df_filtered[disp_cols + ["is_ongoing", "is_end_today", "URL", "ルームID"]].copy()
@@ -494,11 +503,11 @@ def make_html_table_user(df, room_id):
     return html
 
 # ----------------------------------------------------------------------
-# HTMLテーブル生成関数 (管理者モード用 - 新規追加)
+# HTMLテーブル生成関数 (管理者モード用 - 新規追加/修正)
 # ----------------------------------------------------------------------
 def make_html_table_admin(df):
     """管理者用HTMLテーブルを生成（ライバー名列あり、ポイントハイライトなし、終了当日ハイライトあり）"""
-    # ★★★ CSSを管理者用に追加 (ライバー名列対応とハイライト色の調整) ★★★
+    # ★★★ 修正 (1. URL項目の削除): カラム幅を7列に変更し、URL/貢献ランク列を削除 ★★★
     html = f"""
     <style>
     /* ... (既存のCSS定義は省略、make_html_table_userと共通) ... */
@@ -506,15 +515,14 @@ def make_html_table_admin(df):
     table {{ width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }}
     thead th {{ position: sticky; top: 0; background: #0b66c2; color: #fff; padding: 5px; text-align: center; border: 1px solid #0b66c2; z-index: 10; }}
     tbody td {{ padding: 5px; border-bottom: 1px solid #f2f2f2; text-align: center; vertical-align: middle; word-wrap: break-word; }}
-    /* ★★★ 管理者用: カラム幅の指定（ライバー名追加） ★★★ */
-    table col:nth-child(1) {{ width: 14%; }} /* ライバー名 */
-    table col:nth-child(2) {{ width: 33%; }} /* イベント名 */
+    /* ★★★ 管理者用: カラム幅の指定（URL列削除に合わせて調整） ★★★ */
+    table col:nth-child(1) {{ width: 16%; }} /* ライバー名 */
+    table col:nth-child(2) {{ width: 38%; }} /* イベント名 */
     table col:nth-child(3) {{ width: 11%; }} /* 開始日時 */
     table col:nth-child(4) {{ width: 11%; }} /* 終了日時 */
     table col:nth-child(5) {{ width: 6%; }}  /* 順位 */
-    table col:nth-child(6) {{ width: 9%; }} /* ポイント */
+    table col:nth-child(6) {{ width: 12%; }} /* ポイント */
     table col:nth-child(7) {{ width: 6%; }}  /* レベル */
-    table col:nth-child(8) {{ width: 10%; }} /* URL (貢献ランクボタン) */
     
     tr.end_today{{background:{END_TODAY_HIGHLIGHT};}} /* 終了日時当日ハイライト */
     tr.ongoing{{background:#fff8b3;}} /* 開催中黄色ハイライト */
@@ -523,10 +531,10 @@ def make_html_table_admin(df):
     .liver-link {{ color:#0b57d0; text-decoration:underline; }}
     </style>
     <div class="scroll-table"><table>
-    <colgroup><col><col><col><col><col><col><col><col></colgroup>
+    <colgroup><col><col><col><col><col><col><col></colgroup>
     <thead><tr>
     <th>ライバー名</th><th>イベント名</th><th>開始日時</th><th>終了日時</th>
-    <th>順位</th><th>ポイント</th><th>レベル</th><th>URL</th>
+    <th>順位</th><th>ポイント</th><th>レベル</th>
     </tr></thead><tbody>
     """
     for _, r in df.iterrows():
@@ -553,17 +561,18 @@ def make_html_table_admin(df):
         liver_link_url = f"https://www.showroom-live.com/room/profile?room_id={room_id}"
         liver_link = f'<a class="liver-link" href="{liver_link_url}" target="_blank">{liver_name}</a>' if room_id else liver_name
 
-        # 貢献ランクURLを生成し、ボタン風リンクにする
-        contrib_url = generate_contribution_url(url, room_id)
-        if contrib_url:
-            button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">貢献ランク</a>'
-        else:
-            button_html = "<span>URLなし</span>"
+        # 貢献ランクURLを生成し、ボタン風リンクにする（※今回は表示しないがロジックは残す）
+        # contrib_url = generate_contribution_url(url, room_id)
+        # if contrib_url:
+        #     button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">貢献ランク</a>'
+        # else:
+        #     button_html = "<span>URLなし</span>"
 
 
         html += f'<tr class="{cls}">'
         html += f"<td>{liver_link}</td><td>{event_link}</td><td>{r['開始日時']}</td><td>{r['終了日時']}</td>"
-        html += f"<td>{r['順位']}</td><td>{point}</td><td>{r['レベル']}</td><td>{button_html}</td>"
+        # ★★★ 修正 (1. URL項目の削除): 最後の <td>{button_html}</td> を削除 ★★★
+        html += f"<td>{r['順位']}</td><td>{point}</td><td>{r['レベル']}</td>"
         html += "</tr>"
         
     html += "</tbody></table></div>"
