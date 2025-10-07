@@ -164,25 +164,7 @@ if not is_admin:
 disp_cols = ["イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "URL"]
 df_show = df[disp_cols + ["is_ongoing"]].copy()
 
-
 # ---------- HTMLテーブル ----------
-
-def fetch_contribution_rank(event_id: str, room_id: str, top_n: int = 10):
-    """貢献ランキングTOP10を取得"""
-    url = f"https://www.showroom-live.com/api/event/contribution_ranking?event_id={event_id}&room_id={room_id}"
-    data = http_get_json(url)
-    if not data:
-        return []
-    ranking = data.get("ranking") or data.get("contribution_ranking") or []
-    return [
-        {
-            "順位": r.get("rank"),
-            "名前": r.get("name"),
-            "ポイント": f"{r.get('point', 0):,}"
-        }
-        for r in ranking[:top_n]
-    ]
-
 def make_html_table(df):
     html = """
     <style>
@@ -192,58 +174,21 @@ def make_html_table(df):
     tbody td{padding:8px;border-bottom:1px solid #f2f2f2;text-align:center;}
     tr.ongoing{background:#fff8b3;}
     a.evlink{color:#0b57d0;text-decoration:none;}
-    .rank-table{width:80%;margin:6px auto;border:1px solid #ccc;border-radius:4px;font-size:13px;}
-    .rank-table th{background:#eee;padding:4px;}
-    .rank-table td{padding:4px;border-bottom:1px solid #ddd;}
     </style>
     <div class="scroll-table"><table><thead><tr>
-    <th>イベント名</th><th>開始日時</th><th>終了日時</th><th>順位</th><th>ポイント</th><th>レベル</th><th>貢献ランク</th>
+    <th>イベント名</th><th>開始日時</th><th>終了日時</th><th>順位</th><th>ポイント</th><th>レベル</th>
     </tr></thead><tbody>
     """
     for _, r in df.iterrows():
         cls = "ongoing" if r.get("is_ongoing") else ""
         url = r.get("URL") or ""
         name = r.get("イベント名") or ""
-        event_id = r.get("event_id") or ""
         link = f'<a class="evlink" href="{url}" target="_blank">{name}</a>' if url else name
-
-        # 展開用プレースホルダ
-        key = f"rankbtn_{event_id}_{r['開始日時']}"
-        button_html = f'<button id="{key}" style="background:#0b57d0;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">▶ 貢献ランクを表示</button>'
         html += f'<tr class="{cls}">'
-        html += f"<td>{link}</td><td>{r['開始日時']}</td><td>{r['終了日時']}</td><td>{r['順位']}</td><td>{r['ポイント']}</td><td>{r['レベル']}</td><td>{button_html}</td></tr>"
-        html += f'<tr><td colspan="7" id="rankarea_{key}"></td></tr>'
-
+        html += f"<td>{link}</td><td>{r['開始日時']}</td><td>{r['終了日時']}</td><td>{r['順位']}</td><td>{r['ポイント']}</td><td>{r['レベル']}</td></tr>"
     html += "</tbody></table></div>"
-    html += """
-    <script>
-    const buttons = document.querySelectorAll("button[id^='rankbtn_']");
-    buttons.forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const target = document.getElementById('rankarea_' + btn.id);
-            if (!target) return;
-            if (target.innerHTML.trim() !== '') {
-                target.innerHTML = ''; return; // toggle off
-            }
-            target.innerHTML = '<div style="padding:4px;">読み込み中...</div>';
-            const [event_id] = btn.id.split('_').slice(1, 2);
-            const resp = await fetch(`/api/contrib_rank?event_id=${event_id}`);
-            if (!resp.ok) { target.innerHTML = '<div style="color:red;">取得失敗</div>'; return; }
-            const data = await resp.json();
-            if (!Array.isArray(data) || data.length === 0) {
-                target.innerHTML = '<div>ランキング情報なし</div>'; return;
-            }
-            let html = '<table class="rank-table"><tr><th>順位</th><th>名前</th><th>ポイント</th></tr>';
-            data.forEach(r => { html += `<tr><td>${r['順位']}</td><td>${r['名前']}</td><td>${r['ポイント']}</td></tr>`; });
-            html += '</table>';
-            target.innerHTML = html;
-        });
-    });
-    </script>
-    """
     return html
 
-# ---------- 表示 ----------
 st.markdown(make_html_table(df_show), unsafe_allow_html=True)
 st.caption("黄色行は現在開催中（終了日時が未来）のイベントです。")
 
