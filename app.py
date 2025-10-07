@@ -115,15 +115,11 @@ if "do_show" not in st.session_state:
 
 st.title("🎤 SHOWROOM：参加イベント履歴ビューア")
 
-col_inp, col_btn, col_reset = st.columns([4,1,1])
-with col_inp:
-    room_input = st.text_input("表示するルームIDを入力", value="")
-with col_btn:
-    if st.button("表示する"):
-        st.session_state["do_show"] = True
-with col_reset:
-    if st.button("リセット"):
-        st.session_state["do_show"] = False
+# ① レイアウト修正: ルームID入力と「表示する」ボタンを縦に配置
+room_input = st.text_input("表示するルームIDを入力", value="")
+# 「リセット」ボタンは削除
+if st.button("表示する"):
+    st.session_state["do_show"] = True
 
 if not st.session_state["do_show"]:
     st.info("ルームIDを入力して「表示する」を押してください。")
@@ -180,23 +176,52 @@ disp_cols = ["イベント名", "開始日時", "終了日時", "順位", "ポ�
 df_show = df[disp_cols + ["is_ongoing"]].copy()
 df_show = df_show.reset_index(drop=True)
 
+# ② 表のレイアウト修正: ヘッダと行の colums の比率を一致させる
+# イベント名:3, 開始日時:2, 終了日時:2, 順位:1, ポイント:2, レベル:1, 貢献ランクボタン:2 (合計: 13)
+COL_RATIOS = [3, 2, 2, 1, 2, 1, 2] 
+
 # ---------- CSS（見出しセンタリング等） ----------
 st.markdown("""
 <style>
+/* カスタムヘッダの flex-basis を調整して、st.columns の比率と合わせる */
+/* ヘッダの各項目が COL_RATIOS の比率で幅を持つように設定 */
 .row-header {display:flex; background:#0b66c2; color:#fff; padding:8px 12px; font-weight:700;}
-.row-header div {flex:1; text-align:center;}
-.row-item {display:flex; padding:8px 12px; border-bottom:1px solid #eee; align-items:center;}
-.row-item div {flex:1; text-align:center;}
+.row-header > div:nth-child(1) {flex-basis: 3; text-align:center; padding: 0 4px;} /* イベント名 */
+.row-header > div:nth-child(2) {flex-basis: 2; text-align:center; padding: 0 4px;} /* 開始日時 */
+.row-header > div:nth-child(3) {flex-basis: 2; text-align:center; padding: 0 4px;} /* 終了日時 */
+.row-header > div:nth-child(4) {flex-basis: 1; text-align:center; padding: 0 4px;} /* 順位 */
+.row-header > div:nth-child(5) {flex-basis: 2; text-align:center; padding: 0 4px;} /* ポイント */
+.row-header > div:nth-child(6) {flex-basis: 1; text-align:center; padding: 0 4px;} /* レベル */
+.row-header > div:nth-child(7) {flex-basis: 2; text-align:center; padding: 0 4px;} /* 貢献ランク */
+.row-item {padding:0 !important; border-bottom:1px solid #eee; align-items:center;} /* st.columns の padding をリセット */
 .row-item.ongoing {background:#fff8b3;}
+
+/* st.columns の中の要素をセンタリング */
+[data-testid="stColumn"] > div { 
+    text-align: center;
+}
+
 .small-btn {background:#0b57d0;color:white;border:none;padding:6px 10px;border-radius:4px; cursor:pointer;}
 .evlink {color:#0b57d0;text-decoration:none;}
 .container-scroll {max-height:520px; overflow-y:auto; border:1px solid #ddd; border-radius:6px;}
-.contribution-box {padding:8px 12px; background:#fafafa; border-left:3px solid #0b66c2; margin-bottom:8px;}
+.contribution-box {padding:8px 12px; background:#fafafa; border-left:3px solid #0b66c2; margin-bottom:8px; text-align:left !important;}
 </style>
 """, unsafe_allow_html=True)
 
 # ---------- 表示（ヘッダ） ----------
-st.markdown('<div class="row-header"><div>イベント名</div><div>開始日時</div><div>終了日時</div><div>順位</div><div>ポイント</div><div>レベル</div><div>貢献ランク</div></div>', unsafe_allow_html=True)
+# ② レイアウト修正: ヘッダの表示順と項目名を cols の数に合わせる
+st.markdown(
+    '<div class="row-header">'
+    '<div>イベント名</div>'
+    '<div>開始日時</div>'
+    '<div>終了日時</div>'
+    '<div>順位</div>'
+    '<div>ポイント</div>'
+    '<div>レベル</div>'
+    '<div>貢献ランク</div>' # 貢献ランクボタン用のヘッダ
+    '</div>', 
+    unsafe_allow_html=True
+)
 
 # ---------- 表示（行：ボタンは st.button を利用し session_state で toggle） ----------
 if "expanded_rows" not in st.session_state:
@@ -208,7 +233,7 @@ def toggle_row(key):
 # コンテナでスクロール可能に
 st.markdown('<div class="container-scroll">', unsafe_allow_html=True)
 for i, row in df_show.iterrows():
-    cls = "row-item ongoing" if row.get("is_ongoing") else "row-item"
+    cls = " ongoing" if row.get("is_ongoing") else ""
     ev_name = row.get("イベント名") or ""
     url = row.get("URL") or ""
     event_id = row.get("event_id") or ""
@@ -220,7 +245,12 @@ for i, row in df_show.iterrows():
     link = f'<a class="evlink" href="{url}" target="_blank">{ev_name}</a>' if url else ev_name
 
     # レイアウトを保持するために columns を使う（表示崩れしづらい）
-    cols = st.columns([4,2,2,1,2,1,1])
+    # ② レイアウト修正: COL_RATIOS を利用
+    cols = st.columns(COL_RATIOS)
+    
+    # 行全体を囲むための HTML をここでマークダウンで出力（css クラスを適用するため）
+    st.markdown(f'<div class="row-item{cls}">', unsafe_allow_html=True)
+
     with cols[0]:
         st.markdown(link, unsafe_allow_html=True)
     with cols[1]:
@@ -233,15 +263,24 @@ for i, row in df_show.iterrows():
         st.markdown(str(point))
     with cols[5]:
         st.markdown(str(level))
+    
     # 貢献ランクボタン（キーはユニークに）
     btn_key = f"contrib_{event_id}_{room_id}_{i}"
     with cols[6]:
-        if st.button("▶ 貢献ランクを表示", key=btn_key):
+        # st.button は st.columns の中に入れることでその幅に収まります。
+        # 貢献ランクのトグルボタンのラベルを変更
+        btn_label = "非表示 ▲" if st.session_state["expanded_rows"].get(btn_key) else "貢献ランクを表示 ▶"
+        if st.button(btn_label, key=btn_key, use_container_width=True):
             # トグル
             st.session_state["expanded_rows"][btn_key] = not st.session_state["expanded_rows"].get(btn_key, False)
 
+    # 行全体を囲む div を閉じる
+    st.markdown('</div>', unsafe_allow_html=True)
+    
     # 展開部
     if st.session_state["expanded_rows"].get(btn_key):
+        # 展開部分は COL_RATIOS 全体の幅に表示したいので、colsの後に配置
+        # 全幅を使うために st.columns の外で st.markdown を使う
         with st.container():
             ranks = fetch_contribution_rank(event_id, room_id)
             if ranks:
@@ -251,10 +290,12 @@ for i, row in df_show.iterrows():
                 st.markdown(f"**貢献ランク（上位{len(ranks)}）**")
                 # 行表示
                 for r in ranks:
+                    # 貢献ランクの表示は左寄せの方が読みやすいので、CSSで調整しています
                     st.markdown(f"{r['順位']}. {r['名前']} — {r['ポイント']}")
                 st.markdown('</div>', unsafe_allow_html=True)
             else:
-                st.info("ランキング情報が取得できませんでした。")
+                st.info("ランキング情報が取得できませんでした。", icon="ℹ️")
+
 st.markdown('</div>', unsafe_allow_html=True)
 
 st.caption("黄色行は現在開催中（終了日時が未来）のイベントです。")
