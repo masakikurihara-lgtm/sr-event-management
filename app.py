@@ -276,7 +276,7 @@ def make_html_table(df, room_id):
         cursor:pointer;
         text-decoration:none; /* 下線を消す */
         display: inline-block; /* ボタンのように振る舞う */
-        white-space: nowrap; /* テキストの折り返しを防ぐ */
+        /* white-space: nowrap; /* テキストの折り返しを防ぐ */
         font-size: 12px;
     }
     </style>
@@ -304,7 +304,7 @@ def make_html_table(df, room_id):
         
         if contrib_url:
             # <a>タグをボタン風に装飾し、target="_blank" で別タブで開く
-            button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">▶ 貢献ランクを確認</a>'
+            button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">貢献ランクを確認</a>'
         else:
             button_html = "<span>URLなし</span>" # URLが取得できない場合はボタンを表示しない
 
