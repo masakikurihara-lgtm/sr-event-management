@@ -238,13 +238,13 @@ def make_html_table(df, room_id):
         word-wrap: break-word;
     }
     /* カラム幅の指定 */
-    table col:nth-child(1) { width: 38%; } /* イベント名 */
-    table col:nth-child(2) { width: 12%; } /* 開始日時 */
-    table col:nth-child(3) { width: 12%; } /* 終了日時 */
-    table col:nth-child(4) { width: 7%; }  /* 順位 */
-    table col:nth-child(5) { width: 12%; } /* ポイント */
-    table col:nth-child(6) { width: 7%; }  /* レベル */
-    table col:nth-child(7) { width: 12%; } /* 貢献ランク */
+    table col:nth-child(1) { width: 44%; } /* イベント名 */
+    table col:nth-child(2) { width: 11%; } /* 開始日時 */
+    table col:nth-child(3) { width: 11%; } /* 終了日時 */
+    table col:nth-child(4) { width: 6%; }  /* 順位 */
+    table col:nth-child(5) { width: 11%; } /* ポイント */
+    table col:nth-child(6) { width: 6%; }  /* レベル */
+    table col:nth-child(7) { width: 11%; } /* 貢献ランク */
     
     tr.ongoing{background:#fff8b3;}
     a.evlink{color:#0b57d0;text-decoration:none;}
