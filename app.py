@@ -21,6 +21,14 @@ st.set_page_config(page_title="SHOWROOM：参加イベント履歴ビューア",
 FILTER_START_TS = int(datetime(2023, 9, 1, 0, 0, 0, tzinfo=JST).timestamp())
 # --------------------
 
+# ---------- ポイントハイライト用のカラー定義 ----------
+HIGHLIGHT_COLORS = {
+    1: "background-color: #ff7f7f;", # 1位
+    2: "background-color: #ff9999;", # 2位
+    3: "background-color: #ffb2b2;", # 3位
+    4: "background-color: #ffcccc;", # 4位
+    5: "background-color: #ffe5e5;", # 5位
+}
 
 # ---------- Utility ----------
 def http_get_json(url, params=None, retries=3, timeout=8, backoff=0.6):
@@ -254,9 +262,33 @@ if not is_admin:
             df.at[idx, "レベル"] = stats.get("quest_level") or 0
         time.sleep(0.3)
 
+# ----------------------------------------------------------------------
+# ★★★ 新規追加: ポイントランキングを計算し、ハイライトCSSを決定するロジック ★★★
+# ----------------------------------------------------------------------
+# 1. ポイント列を数値型に変換し、NaN（欠損値）やハイフンを除外
+df['__point_num'] = pd.to_numeric(df['ポイント'], errors='coerce')
+df_valid_points = df.dropna(subset=['__point_num']).copy()
+
+# 2. ポイントの高い順にランキングを計算（同点の場合は同じ順位）
+# method='dense'で、同点の場合は次の順位をスキップせずに詰める（例: 1, 2, 2, 3）
+df_valid_points['__rank'] = df_valid_points['__point_num'].rank(method='dense', ascending=False)
+
+# 3. 上位5位までのポイントにハイライトCSSを割り当てる
+df['__highlight_style'] = ''
+for rank, style in HIGHLIGHT_COLORS.items():
+    if not df_valid_points.empty:
+        # rankが5位以内 かつ 実際にその順位が存在する場合
+        target_indices = df_valid_points[df_valid_points['__rank'] == rank].index
+        if not target_indices.empty:
+            df.loc[target_indices, '__highlight_style'] = style
+
+# ----------------------------------------------------------------------
+
+
 # ---------- 表示整形 ----------
 disp_cols = ["イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "URL"]
-df_show = df[disp_cols + ["is_ongoing"]].copy()
+# ハイライトCSS列を追加して、後でmake_html_table関数で利用できるようにする
+df_show = df[disp_cols + ["is_ongoing", "__highlight_style"]].copy()
 
 # ---------- 貢献ランクURL生成ロジック ----------
 def generate_contribution_url(event_url, room_id):
@@ -278,6 +310,8 @@ def generate_contribution_url(event_url, room_id):
 # ---------- 表示構築（HTMLテーブル）----------
 def make_html_table(df, room_id):
     """貢献ランク列付きHTMLテーブルを生成し、リンクを別タブで開くように修正"""
+    # 既存のCSS定義に追加のスタイルは不要
+
     html = """
     <style>
     /* レイアウトの安定化とスクロール機能のCSS */
@@ -366,9 +400,14 @@ def make_html_table(df, room_id):
         else:
             button_html = "<span>URLなし</span>" # URLが取得できない場合はボタンを表示しない
 
+        # ★★★ 修正箇所3: ポイント列にハイライトスタイルを適用 ★★★
+        highlight_style = r.get('__highlight_style', '')
+        point_td = f"<td style=\"{highlight_style}\">{point}</td>"
+
+
         html += f'<tr class="{cls}">'
         html += f"<td>{event_link}</td><td>{r['開始日時']}</td><td>{r['終了日時']}</td>"
-        html += f"<td>{r['順位']}</td><td>{point}</td><td>{r['レベル']}</td><td>{button_html}</td>"
+        html += f"<td>{r['順位']}</td>{point_td}<td>{r['レベル']}</td><td>{button_html}</td>"
         html += "</tr>"
         
     html += "</tbody></table></div>"
@@ -384,5 +423,6 @@ st.caption("黄色行は現在開催中（終了日時が未来）のイベン�
 # 貢献ランクの展開機能はHTMLテーブルの制約により削除
 
 # ---------- CSV出力 ----------
-csv_bytes = df_show.drop(columns=["is_ongoing"]).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+# CSVダウンロード時には追加した内部列を削除
+csv_bytes = df_show.drop(columns=["is_ongoing", "__highlight_style"]).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
 st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_history.csv")
