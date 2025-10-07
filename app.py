@@ -90,11 +90,15 @@ def parse_to_ts(val):
         pass
     try:
         # 時刻込みの形式を優先してパース
-        return int(datetime.strptime(val, "%Y/%m/%d %H:%M").timestamp())
+        dt_obj_naive = datetime.strptime(val, "%Y/%m/%d %H:%M")
+        # ★★★ 修正: JSTとしてローカライズしてからタイムスタンプを取得 ★★★
+        return int(JST.localize(dt_obj_naive).timestamp())
     except Exception:
-        # 日付のみの形式も試す
+        # 日付のみの形式も試す (00:00:00 JSTとして処理)
         try:
-            return int(datetime.strptime(val, "%Y/%m/%d").timestamp())
+            dt_obj_naive = datetime.strptime(val, "%Y/%m/%d")
+            # ★★★ 修正: JSTとしてローカライズしてからタイムスタンプを取得 ★★★
+            return int(JST.localize(dt_obj_naive).timestamp())
         except Exception:
             return None
 
@@ -299,6 +303,7 @@ if is_admin:
     # ★★★ 修正 (3. 全量表示時のフィルタリング基準追加) ★★★
     # 2023年9月1日以降に開始のイベントに限定（ライバーモードと同じ基準）
     df_filtered = df_filtered[
+        # __start_ts が有効な値で、かつ FILTER_START_TS 以上であること
         (df_filtered["__start_ts"].apply(lambda x: pd.notna(x) and x >= FILTER_START_TS))
         | (df_filtered["__start_ts"].isna()) # タイムスタンプに変換できない行も一応含める
     ].copy()
