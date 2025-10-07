@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import requests
 import pandas as pd
@@ -7,7 +6,7 @@ import time
 from datetime import datetime
 import pytz
 
-# --- 設定 ---
+# ===== 設定 =====
 JST = pytz.timezone("Asia/Tokyo")
 EVENT_DB_URL = "https://mksoul-pro.com/showroom/file/event_database.csv"
 API_ROOM_LIST = "https://www.showroom-live.com/api/event/room_list"
@@ -16,7 +15,8 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; mksoul-view/1.1)"}
 
 st.set_page_config(page_title="SHOWROOM イベント履歴ビューア", layout="wide")
 
-# --- 共通関数 ---
+
+# ===== 共通関数 =====
 def http_get_json(url, params=None, retries=3, timeout=10, backoff=0.7):
     for i in range(retries):
         try:
@@ -32,7 +32,7 @@ def http_get_json(url, params=None, retries=3, timeout=10, backoff=0.7):
 
 
 def fmt_time(ts):
-    """Unix秒や文字列を 'YYYY/MM/DD HH:MM' に整形"""
+    """Unix秒を 'YYYY/MM/DD HH:MM' に整形"""
     if pd.isna(ts) or ts == "":
         return ""
     try:
@@ -45,6 +45,7 @@ def fmt_time(ts):
 
 
 def load_event_db():
+    """イベントデータベースCSVを取得"""
     try:
         r = requests.get(EVENT_DB_URL, headers=HEADERS, timeout=15)
         r.raise_for_status()
@@ -56,8 +57,16 @@ def load_event_db():
         return pd.DataFrame()
 
 
+def get_latest_room_name(room_id):
+    """最新ルーム名取得"""
+    data = http_get_json(API_ROOM_PROFILE, params={"room_id": room_id})
+    if data and "room_name" in data:
+        return data["room_name"]
+    return ""
+
+
 def update_live_fields(event_id, room_id):
-    """開催中イベントなら rank/point/quest_level を最新化"""
+    """イベント開催中なら rank/point/quest_level 最新化"""
     data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": 1})
     if not data or "list" not in data:
         return None
@@ -67,20 +76,12 @@ def update_live_fields(event_id, room_id):
                 "順位": e.get("rank") or "-",
                 "ポイント": e.get("point") or "0",
                 "レベル": e.get("quest_level") or "0",
-                "ライバー名": e.get("room_name") or ""
+                "ライバー名": e.get("room_name") or "",
             }
     return None
 
 
-def get_latest_room_name(room_id):
-    """ルーム名をAPIから最新取得"""
-    data = http_get_json(API_ROOM_PROFILE, params={"room_id": room_id})
-    if data and "room_name" in data:
-        return data["room_name"]
-    return ""
-
-
-# --- メイン処理 ---
+# ===== メイン処理 =====
 st.title("🎤 SHOWROOM イベント履歴ビューア")
 
 room_id = st.text_input("ルームIDを入力してください", value="")
@@ -90,33 +91,47 @@ if st.button("表示する"):
         st.warning("ルームIDを入力してください。")
         st.stop()
 
-    # --- データ取得 ---
     df = load_event_db()
     if df.empty:
         st.stop()
 
-    # 型と欠損補正
-    cols = ["event_id", "URL", "ルームID", "イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル"]
-    for c in cols:
+    # 必須列確認
+    required_cols = [
+        "event_id",
+        "URL",
+        "ルームID",
+        "イベント名",
+        "開始日時",
+        "終了日時",
+        "順位",
+        "ポイント",
+        "レベル",
+    ]
+    for c in required_cols:
         if c not in df.columns:
             df[c] = ""
-    df = df[df["ルームID"].astype(str) == str(room_id).strip()]
 
+    df = df[df["ルームID"].astype(str) == str(room_id).strip()]
     if df.empty:
         st.warning("該当ルームのデータが見つかりません。")
         st.stop()
 
-    # --- 最新ルーム名取得 ---
+    # 最新ルーム名を取得
     live_name = get_latest_room_name(room_id)
+    link_html = f'<a href="https://www.showroom-live.com/room/profile?room_id={room_id}" target="_blank">{live_name}</a>'
+    st.markdown(
+        f'<div style="font-size:22px; font-weight:bold; color:#2b5cff; margin:10px 0;">{link_html} の参加イベント</div>',
+        unsafe_allow_html=True,
+    )
 
-    # --- 最新化処理 ---
+    # 最新化処理（開催中イベント）
     now = datetime.now(JST)
     for idx, row in df.iterrows():
         try:
             end_ts = row["終了日時"]
-            if end_ts and end_ts.strip() != "":
+            if end_ts:
                 end_dt = datetime.strptime(fmt_time(end_ts), "%Y/%m/%d %H:%M")
-                if now < end_dt:  # 現在時刻 < 終了時刻 → 開催中イベント
+                if now < end_dt:
                     upd = update_live_fields(row["event_id"], room_id)
                     if upd:
                         for k, v in upd.items():
@@ -125,12 +140,14 @@ if st.button("表示する"):
         except Exception:
             continue
 
-    # --- 日付整形 & ソート ---
+    # 日付整形＆ソート
     df["開始日時"] = df["開始日時"].apply(fmt_time)
     df["終了日時"] = df["終了日時"].apply(fmt_time)
-    df = df.sort_values(by="開始日時", ascending=False)
 
-    # --- 日付フィルタ（新しい順） ---
+    # 両方とも降順
+    df = df.sort_values(by=["開始日時"], ascending=False)
+
+    # ===== 日付フィルタ（プルダウン降順） =====
     st.sidebar.header("📅 日付フィルタ")
     start_dates = sorted(df["開始日時"].dropna().unique().tolist(), reverse=True)
     end_dates = sorted(df["終了日時"].dropna().unique().tolist(), reverse=True)
@@ -143,10 +160,7 @@ if st.button("表示する"):
     if selected_end != "すべて":
         df = df[df["終了日時"] == selected_end]
 
-    # --- 表示タイトル ---
-    st.markdown(f"### 👤 {live_name or '不明'} さんのイベント履歴（ルームID: {room_id}）")
-
-    # --- ハイライト判定 ---
+    # ===== 表示テーブル =====
     def is_ongoing(row):
         try:
             end = datetime.strptime(row["終了日時"], "%Y/%m/%d %H:%M")
@@ -154,13 +168,12 @@ if st.button("表示する"):
         except Exception:
             return False
 
-    # --- HTMLテーブル生成 ---
     def make_html_table(df_show):
         cols = ["イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル"]
         html = """
         <style>
         .scroll-table {
-            height: 500px;
+            height: 480px;
             overflow-y: auto;
             border: 1px solid #ccc;
             border-radius: 6px;
@@ -173,7 +186,7 @@ if st.button("表示する"):
         thead th {
             position: sticky;
             top: 0;
-            background-color: #0052cc;
+            background-color: #1a66cc;
             color: white;
             text-align: center;
             padding: 8px;
