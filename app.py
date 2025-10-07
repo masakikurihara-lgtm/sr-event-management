@@ -16,6 +16,11 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; mksoul-view/1.4)"}
 
 st.set_page_config(page_title="SHOWROOM：参加イベント履歴ビューア", layout="wide")
 
+# --------------------
+# ★★★ 追記: フィルタリング基準日（2023年9月1日 00:00:00 JST）のタイムスタンプ ★★★
+FILTER_START_TS = int(datetime(2023, 9, 1, 0, 0, 0, tzinfo=JST).timestamp())
+# --------------------
+
 
 # ---------- Utility ----------
 def http_get_json(url, params=None, retries=3, timeout=8, backoff=0.6):
@@ -36,23 +41,24 @@ def fmt_time(ts):
     if ts is None or ts == "" or (isinstance(ts, float) and pd.isna(ts)):
         return ""
     if isinstance(ts, str) and "/" in ts:
+        ts_strip = ts.strip()
+        # まず時刻付き（ゼロ埋めなし）の形式でパースを試みる
         try:
-            # データベースから取得したゼロ埋めされていない文字列をパース（柔軟に対応するため、strptimeを使用）
-            dt_obj = datetime.strptime(ts.strip(), "%Y/%m/%d %H:%M")
-            # ゼロ埋め形式で再整形して返す
+            dt_obj = datetime.strptime(ts_strip, "%Y/%m/%d %H:%M")
             return dt_obj.strftime("%Y/%m/%d %H:%M")
         except ValueError:
-            # 時刻部分がない場合も考慮して、日付のみの形式も試す
+            # 時刻がない形式（ゼロ埋めなし）でパースを試みる
             try:
-                 dt_obj = datetime.strptime(ts.strip(), "%Y/%m/%d")
-                 return dt_obj.strftime("%Y/%m/%d 00:00") # 時刻がない場合は 00:00 を付与
+                dt_obj = datetime.strptime(ts_strip, "%Y/%m/%d")
+                return dt_obj.strftime("%Y/%m/%d 00:00")
             except ValueError:
-                 return ts.strip() # パースに失敗した場合は元の文字列を返す
+                # どの形式でもパースできない場合は、元の文字列を返す
+                return ts_strip 
     try:
         ts = int(float(ts))
         if ts > 20000000000:
             ts = ts // 1000
-        # ★★★ 修正箇所: 月日と時刻をゼロ埋め形式 (%Y/%m/%d %H:%M) に変更 ★★★
+        # タイムスタンプからの変換は元々ゼロ埋め形式
         return datetime.fromtimestamp(ts, JST).strftime("%Y/%m/%d %H:%M")
     except Exception:
         return ""
@@ -179,6 +185,12 @@ df["終了日時"] = df["終了日時"].apply(fmt_time)
 df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
 df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
 df.sort_values("__start_ts", ascending=False, inplace=True)
+
+# --------------------
+# ★★★ 追記: 2023年9月1日以降のイベントにフィルタリング ★★★
+# __start_tsがFILTER_START_TS以上のイベントのみを抽出
+df = df[df["__start_ts"] >= FILTER_START_TS].copy()
+# --------------------
 
 # ---------- 開催中判定 ----------
 now_ts = int(datetime.now(JST).timestamp())
