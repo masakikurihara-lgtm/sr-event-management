@@ -174,12 +174,16 @@ def fetch_contribution_rank(event_id: str, room_id: str, top_n: int = 10):
         return []
     ranking = data.get("ranking") or data.get("contribution_ranking") or []
     return [
-        {"順位": r.get("rank"), "名前": r.get("name"), "ポイント": f"{r.get('point', 0):,}"}
+        {
+            "順位": r.get("rank"),
+            "名前": r.get("name"),
+            "ポイント": f"{r.get('point', 0):,}"
+        }
         for r in ranking[:top_n]
     ]
 
 
-# ---------- HTMLテーブル ----------
+# ---------- HTMLテーブル生成 ----------
 def make_html_table(df):
     html = """
     <style>
@@ -189,9 +193,6 @@ def make_html_table(df):
     tbody td{padding:8px;border-bottom:1px solid #f2f2f2;text-align:center;vertical-align:middle;}
     tr.ongoing{background:#fff8b3;}
     a.evlink{color:#0b57d0;text-decoration:none;}
-    .rank-table{width:80%;margin:6px auto;border:1px solid #ccc;border-radius:4px;font-size:13px;}
-    .rank-table th{background:#eee;padding:4px;}
-    .rank-table td{padding:4px;border-bottom:1px solid #ddd;}
     </style>
     <div class="scroll-table"><table><thead><tr>
     <th>イベント名</th><th>開始日時</th><th>終了日時</th>
@@ -204,17 +205,16 @@ def make_html_table(df):
         name = r.get("イベント名") or ""
         event_id = str(r.get("event_id") or "")
         link = f'<a class="evlink" href="{url}" target="_blank">{name}</a>' if url else name
-        contrib_url = f"https://www.showroom-live.com/event/contribution_ranking?event_id={event_id}&room_id={room_id}"
 
         html += f'<tr class="{cls}">'
-        html += (
-            f"<td>{link}</td>"
-            f"<td>{r['開始日時']}</td><td>{r['終了日時']}</td>"
-            f"<td>{r['順位']}</td><td>{r['ポイント']}</td><td>{r['レベル']}</td>"
-            f'<td><a href="{contrib_url}" target="_blank" style="text-decoration:none;color:#0b57d0;">▶ 貢献ランクを表示</a></td>'
-            "</tr>"
-        )
+        html += f"<td>{link}</td><td>{r['開始日時']}</td><td>{r['終了日時']}</td>"
+        html += f"<td>{r['順位']}</td><td>{r['ポイント']}</td><td>{r['レベル']}</td><td>"
 
+        # Streamlitボタンを個別に埋め込む
+        btn_key = f"rankbtn_{event_id}_{r['開始日時']}"
+        if st.button("▶ 貢献ランクを表示", key=btn_key):
+            st.session_state["show_rank_event"] = event_id
+        html += "</td></tr>"
     html += "</tbody></table></div>"
     return html
 
@@ -222,6 +222,19 @@ def make_html_table(df):
 # ---------- 表示 ----------
 st.markdown(make_html_table(df_show), unsafe_allow_html=True)
 st.caption("黄色行は現在開催中（終了日時が未来）のイベントです。")
+
+
+# ---------- ランキング表示 ----------
+show_rank_event = st.session_state.get("show_rank_event")
+
+if show_rank_event:
+    with st.spinner("貢献ランキングを取得中..."):
+        rank_data = fetch_contribution_rank(show_rank_event, room_id)
+    st.markdown(f"### 🎯 イベントID {show_rank_event} の貢献ランキング")
+    if rank_data:
+        st.dataframe(pd.DataFrame(rank_data))
+    else:
+        st.info("ランキング情報が取得できません。")
 
 
 # ---------- CSV出力 ----------
