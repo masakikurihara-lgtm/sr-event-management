@@ -6,8 +6,10 @@ import time
 from datetime import datetime
 import pytz
 
+# API_CONTRIBUTION のインポート漏れを修正
+API_CONTRIBUTION = "https://www.showroom-live.com/api/event/contribution_ranking"
+# URL定義
 JST = pytz.timezone("Asia/Tokyo")
-
 EVENT_DB_URL = "https://mksoul-pro.com/showroom/file/event_database.csv"
 API_ROOM_PROFILE = "https://www.showroom-live.com/api/room/profile"
 API_ROOM_LIST = "https://www.showroom-live.com/api/event/room_list"
@@ -15,8 +17,7 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; mksoul-view/1.4)"}
 
 st.set_page_config(page_title="SHOWROOM：参加イベント履歴ビューア", layout="wide")
 
-
-# ---------- Utility ----------
+# ---------- Utility (既存ロジックを保持) ----------
 def http_get_json(url, params=None, retries=3, timeout=8, backoff=0.6):
     for i in range(retries):
         try:
@@ -30,7 +31,6 @@ def http_get_json(url, params=None, retries=3, timeout=8, backoff=0.6):
             time.sleep(backoff * (i + 1))
     return None
 
-
 def fmt_time(ts):
     if ts is None or ts == "" or (isinstance(ts, float) and pd.isna(ts)):
         return ""
@@ -43,7 +43,6 @@ def fmt_time(ts):
         return datetime.fromtimestamp(ts, JST).strftime("%Y/%m/%d %H:%M")
     except Exception:
         return ""
-
 
 def parse_to_ts(val):
     if val is None or val == "":
@@ -60,7 +59,6 @@ def parse_to_ts(val):
     except Exception:
         return None
 
-
 def load_event_db(url):
     try:
         r = requests.get(url, headers=HEADERS, timeout=12)
@@ -72,11 +70,11 @@ def load_event_db(url):
         return pd.DataFrame()
 
     df.columns = [c.replace("_fmt", "").strip() for c in df.columns]
+    # 必要列の保証
     for c in ["event_id", "URL", "ルームID", "イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "ライバー名"]:
         if c not in df.columns:
             df[c] = ""
     return df
-
 
 def get_room_name(room_id):
     data = http_get_json(API_ROOM_PROFILE, params={"room_id": room_id})
@@ -84,9 +82,7 @@ def get_room_name(room_id):
         return data.get("room_name") or data.get("name") or ""
     return ""
 
-
 def get_event_stats_from_roomlist(event_id, room_id):
-    """event_id から room_list API を呼び出し、指定 room_id の rank/point/quest_level を返す"""
     data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": 1})
     if not data or "list" not in data:
         return None
@@ -99,17 +95,33 @@ def get_event_stats_from_roomlist(event_id, room_id):
             }
     return None
 
+def fetch_contribution_rank(event_id: str, room_id: str, top_n: int = 10):
+    url = f"{API_CONTRIBUTION}?event_id={event_id}&room_id={room_id}"
+    data = http_get_json(url)
+    if not data:
+        return []
+    ranking = data.get("ranking") or data.get("contribution_ranking") or []
+    out = []
+    for r in ranking[:top_n]:
+        out.append({
+            "順位": r.get("rank"),
+            "名前": r.get("name"),
+            "ポイント": f"{r.get('point', 0):,}"
+        })
+    return out
 
-# ---------- UI ----------
+# ---------- UI: 入力ボタンの安定化 (前回修正を適用) ----------
+if "do_show" not in st.session_state:
+    st.session_state["do_show"] = False
+
 st.title("🎤 SHOWROOM：参加イベント履歴ビューア")
 
+# 課題①：ボタンの配置変更 (入力エリアの下に配置)
 room_input = st.text_input("表示するルームIDを入力", value="")
-if st.button("表示する"):
-    do_show = True
-else:
-    do_show = False
+if st.button("表示する"): # 「リセット」ボタンは削除
+    st.session_state["do_show"] = True
 
-if not do_show:
+if not st.session_state["do_show"]:
     st.info("ルームIDを入力して「表示する」を押してください。")
     st.stop()
 
@@ -118,6 +130,7 @@ if room_id == "":
     st.warning("ルームIDを入力してください。")
     st.stop()
 
+# ---------- データ取得・整形 ----------
 with st.spinner("イベントDBを取得中..."):
     df_all = load_event_db(EVENT_DB_URL)
 if df_all.empty:
@@ -129,28 +142,25 @@ if df.empty:
     st.warning("該当データが見つかりません。")
     st.stop()
 
-# ---------- ライバー名表示 ----------
+# ライバー名表示（ラベル）
 room_name = get_room_name(room_id) if not is_admin else "（全データ表示中）"
 link_html = f'<a href="https://www.showroom-live.com/room/profile?room_id={room_id}" target="_blank">{room_name}</a>'
-st.markdown(
-    f'<div style="font-size:22px;font-weight:700;color:#1a66cc;margin-bottom:12px;">{link_html} の参加イベント</div>',
-    unsafe_allow_html=True,
-)
+st.markdown(f'<div style="font-size:22px;font-weight:700;color:#1a66cc;margin-bottom:12px;">{link_html} の参加イベント</div>', unsafe_allow_html=True)
 
-# ---------- 日付整形＆ソート ----------
+# 日付整形＆ソート
 df["開始日時"] = df["開始日時"].apply(fmt_time)
 df["終了日時"] = df["終了日時"].apply(fmt_time)
 df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
 df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
 df.sort_values("__start_ts", ascending=False, inplace=True)
 
-# ---------- 開催中判定 ----------
+# 開催中判定
 now_ts = int(datetime.now(JST).timestamp())
-df["is_ongoing"] = df["__end_ts"].apply(lambda x: x and x > now_ts)
+df["is_ongoing"] = df["__end_ts"].apply(lambda x: True if (x and x > now_ts) else False)
 
-# ---------- 開催中イベント最新化 ----------
+# 最新化（開催中のものだけ自動で最新化）
 if not is_admin:
-    ongoing = df[df["is_ongoing"]]
+    ongoing = df[df["is_ongoing"]].copy()
     for idx, row in ongoing.iterrows():
         event_id = row.get("event_id")
         stats = get_event_stats_from_roomlist(event_id, room_id)
@@ -158,95 +168,167 @@ if not is_admin:
             df.at[idx, "順位"] = stats.get("rank") or "-"
             df.at[idx, "ポイント"] = stats.get("point") or 0
             df.at[idx, "レベル"] = stats.get("quest_level") or 0
-        time.sleep(0.3)
+        # 小休止（過負荷回避）
+        time.sleep(0.25)
 
-# ---------- 表示整形 ----------
-disp_cols = ["イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "URL"]
+# 表示用列
+disp_cols = ["イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "URL", "event_id"]
 df_show = df[disp_cols + ["is_ongoing"]].copy()
+df_show = df_show.reset_index(drop=True)
+
+# 課題②：表のレイアウト崩れ修正
+# ヘッダと行の colums の幅比率を完全に一致させる (合計13)
+# [イベント名:3, 開始日時:2, 終了日時:2, 順位:1, ポイント:2, レベル:1, 貢献ランクボタン:2]
+COL_RATIOS = [3, 2, 2, 1, 2, 1, 2] 
+
+# ---------- CSS（見出しセンタリング等） ----------
+# ヘッダと行の幅を正確に一致させるために、StreamlitのカスタムCSSを利用します。
+st.markdown("""
+<style>
+/* Streamlitのカスタム列に依存しない、絶対的なヘッダ幅を設定 */
+.row-header {
+    display: flex; 
+    background: #0b66c2; 
+    color: #fff; 
+    padding: 8px 12px; 
+    font-weight: 700;
+    line-height: 1.5; /* 高さを調整 */
+}
+/* ヘッダの各項目の幅比率を COL_RATIOS=[3, 2, 2, 1, 2, 1, 2] に合わせて設定 */
+.row-header > div {
+    text-align: center;
+    overflow: hidden; /* はみ出しを隠す */
+}
+.row-header > div:nth-child(1) { flex: 3; } /* イベント名 */
+.row-header > div:nth-child(2) { flex: 2; } /* 開始日時 */
+.row-header > div:nth-child(3) { flex: 2; } /* 終了日時 */
+.row-header > div:nth-child(4) { flex: 1; } /* 順位 */
+.row-header > div:nth-child(5) { flex: 2; } /* ポイント */
+.row-header > div:nth-child(6) { flex: 1; } /* レベル */
+.row-header > div:nth-child(7) { flex: 2; } /* 貢献ランク */
 
 
-# ---------- HTMLテーブル ----------
+/* st.columns で作成された行アイテムの調整 */
+/* Streamlitの内部CSSを上書きして、列内のコンテンツを中央揃えにする */
+[data-testid="stVerticalBlock"] > div > [data-testid="stHorizontalBlock"] > [data-testid^="stColumn"] > div > div,
+[data-testid="stColumn"] > div { 
+    text-align: center;
+    word-break: break-word; /* 長い文字列の折り返し */
+}
 
-def fetch_contribution_rank(event_id: str, room_id: str, top_n: int = 10):
-    """貢献ランキングTOP10を取得"""
-    url = f"https://www.showroom-live.com/api/event/contribution_ranking?event_id={event_id}&room_id={room_id}"
-    data = http_get_json(url)
-    if not data:
-        return []
-    ranking = data.get("ranking") or data.get("contribution_ranking") or []
-    return [
-        {
-            "順位": r.get("rank"),
-            "名前": r.get("name"),
-            "ポイント": f"{r.get('point', 0):,}"
-        }
-        for r in ranking[:top_n]
-    ]
+/* 行の背景色 */
+.row-item {
+    padding: 0px 12px !important; /* st.columnsの外側のpaddingをリセットまたは調整 */
+    border-bottom: 1px solid #eee;
+    align-items: center;
+    background-color: transparent; /* デフォルトの背景色 */
+}
+.row-item.ongoing {
+    background-color: #fff8b3; /* 開催中イベントの背景色 */
+}
 
-def make_html_table(df):
-    html = """
-    <style>
-    .scroll-table {height:520px;overflow-y:auto;border:1px solid #ddd;border-radius:6px;}
-    table{width:100%;border-collapse:collapse;font-size:14px;}
-    thead th{position:sticky;top:0;background:#0b66c2;color:#fff;padding:8px;text-align:center;}
-    tbody td{padding:8px;border-bottom:1px solid #f2f2f2;text-align:center;}
-    tr.ongoing{background:#fff8b3;}
-    a.evlink{color:#0b57d0;text-decoration:none;}
-    .rank-table{width:80%;margin:6px auto;border:1px solid #ccc;border-radius:4px;font-size:13px;}
-    .rank-table th{background:#eee;padding:4px;}
-    .rank-table td{padding:4px;border-bottom:1px solid #ddd;}
-    </style>
-    <div class="scroll-table"><table><thead><tr>
-    <th>イベント名</th><th>開始日時</th><th>終了日時</th><th>順位</th><th>ポイント</th><th>レベル</th><th>貢献ランク</th>
-    </tr></thead><tbody>
-    """
-    for _, r in df.iterrows():
-        cls = "ongoing" if r.get("is_ongoing") else ""
-        url = r.get("URL") or ""
-        name = r.get("イベント名") or ""
-        event_id = r.get("event_id") or ""
-        link = f'<a class="evlink" href="{url}" target="_blank">{name}</a>' if url else name
+/* その他のスタイル */
+.evlink {color:#0b57d0;text-decoration:none;}
+.container-scroll {max-height:520px; overflow-y:auto; border:1px solid #ddd; border-radius:6px;}
+.contribution-box {padding:8px 12px; background:#fafafa; border-left:3px solid #0b66c2; margin-bottom:8px; text-align:left !important;}
+.rank-table-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+    font-size: 14px;
+    border-bottom: 1px dotted #ccc;
+}
+</style>
+""", unsafe_allow_html=True)
 
-        # 展開用プレースホルダ
-        key = f"rankbtn_{event_id}_{r['開始日時']}"
-        button_html = f'<button id="{key}" style="background:#0b57d0;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;">▶ 貢献ランクを表示</button>'
-        html += f'<tr class="{cls}">'
-        html += f"<td>{link}</td><td>{r['開始日時']}</td><td>{r['終了日時']}</td><td>{r['順位']}</td><td>{r['ポイント']}</td><td>{r['レベル']}</td><td>{button_html}</td></tr>"
-        html += f'<tr><td colspan="7" id="rankarea_{key}"></td></tr>'
+# ---------- 表示（ヘッダ） ----------
+# CSSで幅を制御したカスタムヘッダを出力
+st.markdown(
+    '<div class="row-header">'
+    '<div>イベント名</div>'
+    '<div>開始日時</div>'
+    '<div>終了日時</div>'
+    '<div>順位</div>'
+    '<div>ポイント</div>'
+    '<div>レベル</div>'
+    '<div>貢献ランク</div>'
+    '</div>', 
+    unsafe_allow_html=True
+)
 
-    html += "</tbody></table></div>"
-    html += """
-    <script>
-    const buttons = document.querySelectorAll("button[id^='rankbtn_']");
-    buttons.forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const target = document.getElementById('rankarea_' + btn.id);
-            if (!target) return;
-            if (target.innerHTML.trim() !== '') {
-                target.innerHTML = ''; return; // toggle off
-            }
-            target.innerHTML = '<div style="padding:4px;">読み込み中...</div>';
-            const [event_id] = btn.id.split('_').slice(1, 2);
-            const resp = await fetch(`/api/contrib_rank?event_id=${event_id}`);
-            if (!resp.ok) { target.innerHTML = '<div style="color:red;">取得失敗</div>'; return; }
-            const data = await resp.json();
-            if (!Array.isArray(data) || data.length === 0) {
-                target.innerHTML = '<div>ランキング情報なし</div>'; return;
-            }
-            let html = '<table class="rank-table"><tr><th>順位</th><th>名前</th><th>ポイント</th></tr>';
-            data.forEach(r => { html += `<tr><td>${r['順位']}</td><td>${r['名前']}</td><td>${r['ポイント']}</td></tr>`; });
-            html += '</table>';
-            target.innerHTML = html;
-        });
-    });
-    </script>
-    """
-    return html
+# ---------- 表示（行：st.columns と st.button で開閉を実現） ----------
+if "expanded_rows" not in st.session_state:
+    st.session_state["expanded_rows"] = {}
 
-# ---------- 表示 ----------
-st.markdown(make_html_table(df_show), unsafe_allow_html=True)
+# コンテナでスクロール可能に
+st.markdown('<div class="container-scroll">', unsafe_allow_html=True)
+for i, row in df_show.iterrows():
+    ev_name = row.get("イベント名") or ""
+    url = row.get("URL") or ""
+    event_id = row.get("event_id") or ""
+    start = row.get("開始日時") or ""
+    end = row.get("終了日時") or ""
+    rank = row.get("順位") or ""
+    point = f"{float(row.get('ポイント', 0)):,.0f}" if pd.notna(row.get('ポイント')) and row.get('ポイント') not in ('-', '') else str(row.get('ポイント', ''))
+    level = row.get("レベル") or ""
+    link = f'<a class="evlink" href="{url}" target="_blank">{ev_name}</a>' if url else ev_name
+    
+    btn_key = f"contrib_{event_id}_{room_id}_{i}"
+    is_expanded = st.session_state["expanded_rows"].get(btn_key, False)
+    cls = " ongoing" if row.get("is_ongoing") else ""
+    
+    # 課題②: 行の表示
+    # st.columns を使用して、ヘッダと全く同じ幅比率でコンテンツを配置
+    cols = st.columns(COL_RATIOS)
+    
+    # st.markdown で行の背景色を設定するための div を出力
+    st.markdown(f'<div class="row-item{cls}">', unsafe_allow_html=True)
+    
+    # st.columns の中にコンテンツを配置
+    with cols[0]:
+        st.markdown(link, unsafe_allow_html=True)
+    with cols[1]:
+        st.markdown(start)
+    with cols[2]:
+        st.markdown(end)
+    with cols[3]:
+        st.markdown(str(rank))
+    with cols[4]:
+        st.markdown(point)
+    with cols[5]:
+        st.markdown(str(level))
+        
+    with cols[6]:
+        # st.button で開閉式のトグルボタンを実装
+        btn_label = "非表示 ▲" if is_expanded else "貢献ランクを表示 ▶"
+        # st.button は True/False を返し、クリックで True になります。
+        # Session State の値を反転させるため、ボタンを押した後に State を更新します。
+        if st.button(btn_label, key=btn_key, use_container_width=True):
+            st.session_state["expanded_rows"][btn_key] = not is_expanded
+
+    # 行の背景色を閉じるための div を出力
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # 展開部 (貢献ランキング)
+    if is_expanded:
+        # 展開部は行全体を使いたいので、st.columns の外で st.container() を使用
+        with st.container():
+            ranks = fetch_contribution_rank(event_id, room_id)
+            if ranks:
+                # 表示（簡易テーブル）
+                st.markdown('<div class="contribution-box">', unsafe_allow_html=True)
+                st.markdown(f"**貢献ランク（上位{len(ranks)}）**")
+                # 貢献ランクの表示は st.markdown でレイアウトを調整
+                for r in ranks:
+                    st.markdown(f'<div class="rank-table-item"><span>{r["順位"]}. {r["名前"]}</span><span>{r["ポイント"]}</span></div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            else:
+                st.info("ランキング情報が取得できませんでした。", icon="ℹ️")
+
+st.markdown('</div>', unsafe_allow_html=True)
+
 st.caption("黄色行は現在開催中（終了日時が未来）のイベントです。")
 
-# ---------- CSV出力 ----------
-csv_bytes = df_show.drop(columns=["is_ongoing"]).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+# CSV ダウンロード（表示用データ）
+csv_bytes = df_show.drop(columns=["is_ongoing", "event_id", "URL"]).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
 st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_history.csv")
