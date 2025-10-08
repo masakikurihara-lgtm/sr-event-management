@@ -348,7 +348,7 @@ if is_admin:
 
     # 3. UIコンポーネント (フィルタ、最新化ボタン)
     # ★★★ 修正: カラム幅を調整し、プルダウンとボタン/チェックボックスの縦位置を揃える ★★★
-    col1, col2, col3, col4 = st.columns([0.9, 1.0, 1.0, 1.1])
+    col1, col2, col3, col4, col5 = st.columns([0.9, 1.0, 1.0, 1.0, 1.1])
     
     # 最新化ボタン
     with col1:
@@ -372,8 +372,13 @@ if is_admin:
             key='admin_start_date_filter',
         )
 
-    # 全量表示トグル
+    # 隙間
     with col4:
+        # プルダウンのラベル分、縦位置を調整するための空行を挿入
+        st.write("")
+
+    # 全量表示トグル
+    with col5:
         # プルダウンのラベル分、縦位置を調整するための空行を挿入
         #st.write("")
         #st.write("")
