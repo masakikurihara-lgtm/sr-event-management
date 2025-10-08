@@ -208,6 +208,13 @@ def refresh_data():
     """最新化ボタンのコールバック"""
     st.session_state.refresh_trigger = True
     st.session_state.show_data = True # 最新化も表示トリガーとする
+
+def toggle_full_data():
+    """
+    全量表示チェックボックスの値をセッションステートに強制的に同期させるコールバック関数。
+    キー名 'admin_full_data_checkbox_internal' の値を 'admin_full_data' にコピーする。
+    """
+    st.session_state.admin_full_data = st.session_state.admin_full_data_checkbox_internal
 # ----------------------------------------------------------------------
 
 
@@ -331,7 +338,13 @@ if is_admin:
 
     # 全量表示トグル
     with col4:
-        st.session_state.admin_full_data = st.checkbox("全量表示（期間フィルタ無効）", value=st.session_state.admin_full_data, key="admin_full_data_checkbox")
+        # ★★★ 修正箇所: on_change コールバックと内部キーを使用し、直接代入を削除 ★★★
+        st.checkbox(
+            "全量表示（期間フィルタ無効）", 
+            value=st.session_state.admin_full_data, # ロジック用の変数を初期値として使用
+            key="admin_full_data_checkbox_internal", # チェックボックスの実際の値を保持する内部キー
+            on_change=toggle_full_data # 変更時に上記関数で値を確定させる
+        )
         
     # 4. プルダウンフィルタの適用
     # プルダウンフィルタの適用
