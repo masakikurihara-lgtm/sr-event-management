@@ -388,9 +388,9 @@ if is_admin:
                 room_id_to_update = row.get("ルームID")
                 stats = get_event_stats_from_roomlist(event_id, room_id_to_update)
                 if stats:
-                    df_filtered.at[idx, "順位"] = stats.get("rank") or "-"
-                    df_filtered.at[idx, "ポイント"] = stats.get("point") or 0
-                    df_filtered.at[idx, "レベル"] = stats.get("quest_level") or 0
+                    st.session_state.df_all.at[idx, "順位"] = stats.get("rank") or "-"
+                    st.session_state.df_all.at[idx, "ポイント"] = stats.get("point") or 0
+                    st.session_state.df_all.at[idx, "レベル"] = stats.get("quest_level") or 0
                 time.sleep(0.1) # API負荷軽減
         st.toast("開催中イベントの最新化が完了しました。", icon="✅")
 
