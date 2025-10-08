@@ -127,50 +127,6 @@ def load_event_db(url):
     return df
 
 
-# ---------------------------------------------------------
-# ✅ APIキャッシュ機能（提案②）
-# ---------------------------------------------------------
-_room_name_cache_local = {}
-_event_stats_cache_local = {}
-
-def get_room_name_cached(room_id):
-    """キャッシュ付きルーム名取得"""
-    if not room_id:
-        return ""
-    if room_id in _room_name_cache_local:
-        return _room_name_cache_local[room_id]
-
-    data = http_get_json(API_ROOM_PROFILE, params={"room_id": room_id})
-    if data and isinstance(data, dict):
-        name = data.get("room_name") or data.get("name") or ""
-        _room_name_cache_local[room_id] = name
-        return name
-    _room_name_cache_local[room_id] = ""
-    return ""
-
-def get_event_stats_from_roomlist_cached(event_id, room_id):
-    """キャッシュ付きイベントステータス取得"""
-    key = f"{event_id}_{room_id}"
-    if key in _event_stats_cache_local:
-        return _event_stats_cache_local[key]
-
-    data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": 1})
-    if not data or "list" not in data:
-        _event_stats_cache_local[key] = None
-        return None
-
-    for entry in data["list"]:
-        if str(entry.get("room_id")) == str(room_id):
-            result = {
-                "rank": entry.get("rank") or entry.get("position"),
-                "point": entry.get("point") or entry.get("event_point") or entry.get("total_point"),
-                "quest_level": entry.get("quest_level") or entry.get("event_entry", {}).get("quest_level"),
-            }
-            _event_stats_cache_local[key] = result
-            return result
-
-    _event_stats_cache_local[key] = None
-    return None
 
 
 
