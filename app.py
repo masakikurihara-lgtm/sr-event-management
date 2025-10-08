@@ -272,36 +272,7 @@ if is_admin:
     df["is_end_today"] = df["__end_ts"].apply(lambda x: pd.notna(x) and today_ts <= x < (today_ts + 86400))
 
 
-    # 3. UIコンポーネント (フィルタ、最新化ボタン)
-    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
-    
-    # 最新化ボタン
-    with col1:
-        st.button("🔄 開催中イベントの最新化", on_click=refresh_data, key="admin_refresh_button")
-
-    # 終了日時フィルタリング
-    unique_end_dates = sorted(list(set(df["終了日時"].apply(lambda x: x.split(' ')[0] if x else '')) - {''}), reverse=True)
-    with col2:
-        selected_end_date = st.selectbox(
-            "終了日時で絞り込み",
-            options=["全期間"] + unique_end_dates,
-            key='admin_end_date_filter',
-        )
-
-    # 開始日時フィルタリング
-    unique_start_dates = sorted(list(set(df["開始日時"].apply(lambda x: x.split(' ')[0] if x else '')) - {''}), reverse=True)
-    with col3:
-        selected_start_date = st.selectbox(
-            "開始日時で絞り込み",
-            options=["全期間"] + unique_start_dates,
-            key='admin_start_date_filter',
-        )
-
-    # 全量表示トグル
-    with col4:
-        st.session_state.admin_full_data = st.checkbox("全量表示（期間フィルタ無効）", value=st.session_state.admin_full_data, key="admin_full_data_checkbox")
-        
-    # 4. フィルタリングの適用
+    # 4. フィルタリングの適用（デフォルトフィルタリングまで）
     df_filtered = df.copy()
 
     # ★★★ 修正 (3. 全量表示時のフィルタリング基準追加) ★★★
@@ -320,6 +291,49 @@ if is_admin:
             | (df_filtered["__end_ts"].isna()) # タイムスタンプに変換できない行も一応含める
         ].copy()
 
+    # ★★★ 修正箇所: フィルタリングされたデータ (df_filtered) から日付リストを生成 ★★★
+    # 終了日時フィルタリング用の選択肢生成
+    unique_end_dates = sorted(
+        list(set(df_filtered["終了日時"].apply(lambda x: x.split(' ')[0] if x else '')) - {''}), 
+        reverse=True
+    )
+    
+    # 開始日時フィルタリング用の選択肢生成
+    unique_start_dates = sorted(
+        list(set(df_filtered["開始日時"].apply(lambda x: x.split(' ')[0] if x else '')) - {''}), 
+        reverse=True
+    )
+    # ★★★ 修正箇所終了 ★★★
+
+
+    # 3. UIコンポーネント (フィルタ、最新化ボタン)
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
+    
+    # 最新化ボタン
+    with col1:
+        st.button("🔄 開催中イベントの最新化", on_click=refresh_data, key="admin_refresh_button")
+
+    # 終了日時フィルタリング
+    with col2:
+        selected_end_date = st.selectbox(
+            "終了日時で絞り込み",
+            options=["全期間"] + unique_end_dates, # 修正後のリストを使用
+            key='admin_end_date_filter',
+        )
+
+    # 開始日時フィルタリング
+    with col3:
+        selected_start_date = st.selectbox(
+            "開始日時で絞り込み",
+            options=["全期間"] + unique_start_dates, # 修正後のリストを使用
+            key='admin_start_date_filter',
+        )
+
+    # 全量表示トグル
+    with col4:
+        st.session_state.admin_full_data = st.checkbox("全量表示（期間フィルタ無効）", value=st.session_state.admin_full_data, key="admin_full_data_checkbox")
+        
+    # 4. プルダウンフィルタの適用
     # プルダウンフィルタの適用
     if selected_end_date != "全期間":
         df_filtered = df_filtered[df_filtered["終了日時"].str.startswith(selected_end_date)].copy()
@@ -640,9 +654,9 @@ def make_html_table_admin(df):
         # 貢献ランクURLを生成し、ボタン風リンクにする（※今回は表示しないがロジックは残す）
         # contrib_url = generate_contribution_url(url, room_id)
         # if contrib_url:
-        #     button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">貢献ランク</a>'
+        #       button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">貢献ランク</a>'
         # else:
-        #     button_html = "<span>URLなし</span>"
+        #       button_html = "<span>URLなし</span>"
 
 
         html += f'<tr class="{cls}">'
