@@ -247,7 +247,7 @@ if 'df_all' not in st.session_state or is_admin or st.session_state.get('refresh
     with st.spinner("イベントDBを取得中..."):
         df_all = load_event_db(EVENT_DB_URL)
         st.session_state.df_all = df_all # セッションに保存
-        st.session_state.refresh_trigger = False # フラグをリセット
+        # st.session_state.refresh_trigger = False # ★★★ 修正: この行を削除することでボタン押下時のフラグを保持 ★★★
 
 if st.session_state.df_all.empty:
     st.stop()
@@ -377,8 +377,8 @@ if is_admin:
     # -------------------------------------------------------------------
 
     # 5. 開催中イベント最新化
-    # 最新化ボタンが押された場合、または初回ロード時に実行（ただし今回はボタン制御のみ）
-    if st.session_state.get('refresh_trigger', False):
+    # ★★★ 修正: 管理者モード実行時、またはボタン押下時に API 更新を実行 ★★★
+    if is_admin or st.session_state.get('refresh_trigger', False):
         ongoing = df_filtered[df_filtered["is_ongoing"]]
         with st.spinner("開催中イベントの順位/ポイントを最新化中..."):
             for idx, row in ongoing.iterrows():
@@ -388,11 +388,16 @@ if is_admin:
                 room_id_to_update = row.get("ルームID")
                 stats = get_event_stats_from_roomlist(event_id, room_id_to_update)
                 if stats:
+                    # st.session_state.df_all (大元データ) を更新するロジックは前回修正済みでOK
                     st.session_state.df_all.at[idx, "順位"] = stats.get("rank") or "-"
                     st.session_state.df_all.at[idx, "ポイント"] = stats.get("point") or 0
                     st.session_state.df_all.at[idx, "レベル"] = stats.get("quest_level") or 0
                 time.sleep(0.1) # API負荷軽減
+        
+        # ★★★ 修正: API更新が完了した後にフラグをリセット ★★★
+        st.session_state.refresh_trigger = False
         st.toast("開催中イベントの最新化が完了しました。", icon="✅")
+
 
     # 6. ソート (終了日時が新しいものが上)
     # 終了日時降順ソート
@@ -432,12 +437,13 @@ elif room_id != "":
     now_ts = int(datetime.now(JST).timestamp())
     df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
 
-    # 5. 開催中イベント最新化
+    # 5. 開催中イベント最新化 (ライバーモードは実行時に自動最新化)
     ongoing = df[df["is_ongoing"]]
     for idx, row in ongoing.iterrows():
         event_id = row.get("event_id")
         stats = get_event_stats_from_roomlist(event_id, room_id)
         if stats:
+            # ライバーモードはローカルの df を更新
             df.at[idx, "順位"] = stats.get("rank") or "-"
             df.at[idx, "ポイント"] = stats.get("point") or 0
             df.at[idx, "レベル"] = stats.get("quest_level") or 0
@@ -667,9 +673,9 @@ def make_html_table_admin(df):
         # 貢献ランクURLを生成し、ボタン風リンクにする（※今回は表示しないがロジックは残す）
         # contrib_url = generate_contribution_url(url, room_id)
         # if contrib_url:
-        #       button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">貢献ランク</a>'
+        #        button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">貢献ランク</a>'
         # else:
-        #       button_html = "<span>URLなし</span>"
+        #        button_html = "<span>URLなし</span>"
 
 
         html += f'<tr class="{cls}">'
