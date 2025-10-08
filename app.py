@@ -587,21 +587,40 @@ if is_admin:
                     except Exception:
                         existing_df = pd.DataFrame()
 
-                    # --- 既存データを基に最新情報を反映 ---
+                    # --- 既存データを基に最新情報を反映（順位・ポイント・レベルを上書き） ---
                     merged_df = existing_df.copy()
 
+                    # 型統一（安全対策）
+                    merged_df["event_id"] = merged_df["event_id"].astype(str)
+                    merged_df["ルームID"] = merged_df["ルームID"].astype(str)
+                    df_new["event_id"] = df_new["event_id"].astype(str)
+                    df_new["ルームID"] = df_new["ルームID"].astype(str)
+
+                    updated_rows = 0
+                    added_rows = 0
+
                     for _, new_row in df_new.iterrows():
-                        key = (str(new_row["event_id"]), str(new_row["ルームID"]))
-                        mask = (merged_df["event_id"].astype(str) == key[0]) & (merged_df["ルームID"].astype(str) == key[1])
+                        eid = str(new_row["event_id"])
+                        rid = str(new_row["ルームID"])
+                        mask = (merged_df["event_id"] == eid) & (merged_df["ルームID"] == rid)
+
                         if mask.any():
-                            idx = merged_df[mask].index[0]
-                            # 順位・ポイント・レベル・備考を更新（空欄以外のみ上書き）
-                            for c in ["順位", "ポイント", "レベル", "備考"]:
-                                val = new_row[c]
-                                if pd.notna(val) and str(val).strip() != "":
-                                    merged_df.at[idx, c] = val
+                            idx = mask.idxmax()
+                            # 主要情報を更新（空欄でも上書きする）
+                            for col in ["順位", "ポイント", "レベル", "イベント名", "開始日時", "終了日時", "URL"]:
+                                merged_df.at[idx, col] = new_row.get(col, merged_df.at[idx, col])
+                            updated_rows += 1
                         else:
+                            # 新規行として追加
                             merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
+                            added_rows += 1
+
+                    st.write(f"更新済み: {updated_rows}件 / 新規追加: {added_rows}件")
+
+                    # --- ソート順：event_id降順, ルームID昇順 ---
+                    merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
+                    merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
+                    merged_df.drop(columns=["event_id_num"], inplace=True)
 
                     # --- ソート順：event_id降順, ルームID昇順 ---
                     merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
@@ -617,9 +636,8 @@ if is_admin:
                         st.warning(f"FTPアップロード失敗: {e}")
                         st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_database.csv")
 
-        
-        
-        
+
+                        
     # 4. プルダウンフィルタの適用
     if selected_end_date != "全期間":
         df_filtered = df_filtered[df_filtered["終了日時"].str.startswith(selected_end_date)].copy()
