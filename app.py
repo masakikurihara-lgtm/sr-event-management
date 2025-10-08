@@ -139,7 +139,6 @@ def get_event_stats_from_roomlist(event_id, room_id):
     if not data or "list" not in data:
         return None
     for entry in data["list"]:
-        # event_id が数値の場合と文字列（URLキー）の場合があるため、文字列に変換して比較
         if str(entry.get("room_id")) == str(room_id):
             return {
                 "rank": entry.get("rank") or entry.get("position"),
@@ -170,17 +169,6 @@ def generate_contribution_url(event_url, room_id):
         return f"https://www.showroom-live.com/event/contribution/{url_key}?room_id={room_id}"
     return None
 
-# ★★★ 新規: URLからイベントID（URLキー）を抽出するヘルパー関数 ★★★
-def extract_event_id_from_url(url):
-    """URLからイベントキー（event_idとして利用）を抽出する"""
-    if pd.isna(url) or not url:
-        return None
-    match = re.search(r'/event/([^/]+)/?$', str(url))
-    if match:
-        return match.group(1)
-    return None
-
-
 # ----------------------------------------------------------------------
 # ★★★ セッションステートの初期化とコールバック関数 ★★★
 # ----------------------------------------------------------------------
@@ -201,17 +189,9 @@ if 'admin_end_date' not in st.session_state:
 # ★★★ 管理者モード用 ルーム名キャッシュ ★★★
 if 'room_name_cache' not in st.session_state:
     st.session_state.room_name_cache = {}
-# ★★★ 最新化トリガーフラグ (既存) ★★★
+# ★★★ 最新化トリガーフラグ ★★★
 if 'refresh_trigger' not in st.session_state:
     st.session_state.refresh_trigger = False
-
-# ★★★ 新規追加: 3フェーズ更新トリガーフラグ ★★★
-if 'update_phase_1_trigger' not in st.session_state:
-    st.session_state.update_phase_1_trigger = False
-if 'update_phase_2_trigger' not in st.session_state:
-    st.session_state.update_phase_2_trigger = False
-if 'update_phase_3_trigger' not in st.session_state:
-    st.session_state.update_phase_3_trigger = False
 
 
 def toggle_sort_by_point():
@@ -228,7 +208,7 @@ def save_room_id():
     st.session_state.room_input_value = st.session_state.room_id_input
 
 def refresh_data():
-    """最新化ボタンのコールバック (既存の「開催中イベント」更新)"""
+    """最新化ボタンのコールバック"""
     st.session_state.refresh_trigger = True
     st.session_state.show_data = True # 最新化も表示トリガーとする
 
@@ -238,17 +218,6 @@ def toggle_full_data():
     キー名 'admin_full_data_checkbox_internal' の値を 'admin_full_data' にコピーする。
     """
     st.session_state.admin_full_data = st.session_state.admin_full_data_checkbox_internal
-
-# ★★★ 新規追加: 3フェーズ更新コールバック関数 ★★★
-def trigger_update_phase_1():
-    st.session_state.update_phase_1_trigger = True
-    st.session_state.show_data = True
-def trigger_update_phase_2():
-    st.session_state.update_phase_2_trigger = True
-    st.session_state.show_data = True
-def trigger_update_phase_3():
-    st.session_state.update_phase_3_trigger = True
-    st.session_state.show_data = True
 # ----------------------------------------------------------------------
 
 
@@ -285,7 +254,6 @@ if 'df_all' not in st.session_state or is_admin or st.session_state.get('refresh
     st.session_state.df_all = df_all # セッションに保存
 
 if st.session_state.df_all.empty:
-    st.warning("イベントデータベースのロードに失敗しました。")
     st.stop()
 
 df_all = st.session_state.df_all.copy() # コピーを使用して、元のセッションデータを汚染しないようにする
@@ -296,25 +264,26 @@ df_all = st.session_state.df_all.copy() # コピーを使用して、元のセ�
 
 if is_admin:
     # --- 管理者モードのデータ処理 ---
+    # st.info(f"**管理者モード**") # ← 削除 (ユーザー要望)
 
-    # 既存のロジック: 日付整形とタイムスタンプ追加
-    # この処理は、更新トリガーが発動した場合に再実行するため、一旦この時点で実行
+    # 1. 日付整形とタイムスタンプ追加 (全量)
     df = df_all.copy()
     df["開始日時"] = df["開始日時"].apply(fmt_time)
     df["終了日時"] = df["終了日時"].apply(fmt_time)
     df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
     df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
     
-    # 開催中判定
+    # 2. 開催中判定
     now_ts = int(datetime.now(JST).timestamp())
     today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
     df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
-    df["is_end_today"] = df["__end_ts"].apply(lambda x: pd.notna(x) and today_ts <= x < (today_ts + 86400))
     
-    # ---------------------------------------------------------
-    # ★★★ 既存: 開催中イベント最新化 (refresh_triggerがTrueの場合) ★★★
-    # ---------------------------------------------------------
-    if st.session_state.get('refresh_trigger', False):
+    # 終了日時が当日（今日0時〜明日0時の間）の判定
+    df["is_end_today"] = df["__end_ts"].apply(lambda x: pd.notna(x) and today_ts <= x < (today_ts + 86400))
+
+
+    # ★★★ 修正 (5. 開催中イベント最新化) - 自動最新化/ボタン最新化をここで実行 ★★★
+    if is_admin or st.session_state.get('refresh_trigger', False):
         ongoing = df[df["is_ongoing"]] # df (フィルタ前の全データ) を使用
         
         # with st.spinner("開催中イベントの順位/ポイントを最新化中..."): # ← 削除 (ユーザー要望)
@@ -331,116 +300,21 @@ if is_admin:
         st.session_state.refresh_trigger = False
         # st.toast("開催中イベントの最新化が完了しました。", icon="✅") # ← 削除 (ユーザー要望)
         
-    # ---------------------------------------------------------
-    # ★★★ 新規追加: フェーズ1 (event_id補完) ★★★
-    # ---------------------------------------------------------
-    if st.session_state.get('update_phase_1_trigger', False):
-        st.session_state.update_phase_1_trigger = False
-        target_df = st.session_state.df_all
+        # ★★★ 修正: st.session_state.df_all の更新を反映するため、df を再作成 ★★★
+        df_all = st.session_state.df_all.copy()
+        df = df_all.copy()
         
-        with st.spinner("フェーズ1: event_idをURLから補完中..."):
-            # URLがあり、かつ event_id が空または数値に変換できない行を抽出
-            mask = (target_df["URL"] != '') & (pd.to_numeric(target_df["event_id"], errors='coerce').isna())
-            rows_to_update = target_df[mask]
-            
-            update_count = 0
-            for idx in rows_to_update.index:
-                url = target_df.at[idx, "URL"]
-                # URLからevent_id (URLキー) を抽出
-                event_id_key = extract_event_id_from_url(url)
-                
-                if event_id_key:
-                    # 抽出したキーでevent_id列を更新
-                    target_df.at[idx, "event_id"] = event_id_key
-                    update_count += 1
-                time.sleep(0.05) # API負荷軽減
-            
-        st.session_state.df_all = target_df
-        st.toast(f"✅ フェーズ1 (event_id補完): {update_count}件のレコードが更新されました。", icon="✅")
+        # 再度フラグ/TSを付ける (必須)
+        df["開始日時"] = df["開始日時"].apply(fmt_time)
+        df["終了日時"] = df["終了日時"].apply(fmt_time)
+        df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
+        df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
+        now_ts = int(datetime.now(JST).timestamp())
+        today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
+        df["is_end_today"] = df["__end_ts"].apply(lambda x: pd.notna(x) and today_ts <= x < (today_ts + 86400))
+    # ★★★ 修正ブロック終了 ★★★
 
-
-    # ---------------------------------------------------------
-    # ★★★ 新規追加: フェーズ2 (ライバー名補完) ★★★
-    # ---------------------------------------------------------
-    if st.session_state.get('update_phase_2_trigger', False):
-        st.session_state.update_phase_2_trigger = False
-        target_df = st.session_state.df_all
-        
-        # ルームIDがあり、かつライバー名が空の行を抽出
-        mask = (target_df["ルームID"] != '') & (target_df["ライバー名"] == '')
-        rows_to_update = target_df[mask]
-        
-        room_ids_to_fetch = rows_to_update["ルームID"].unique()
-        update_record_count = 0
-        
-        with st.spinner(f"フェーズ2: ライバー名 ({len(room_ids_to_fetch)}ID) をAPIから補完中..."):
-            for room_id_val in room_ids_to_fetch:
-                room_id_str = str(room_id_val)
-                name = get_room_name(room_id_str)
-                
-                if name:
-                    # ルームIDが一致する全ての行の「ライバー名」列を更新
-                    count = len(target_df.loc[target_df["ルームID"] == room_id_val])
-                    target_df.loc[target_df["ルームID"] == room_id_val, "ライバー名"] = name
-                    update_record_count += count
-                
-                time.sleep(0.1) # API負荷軽減
-                
-        st.session_state.df_all = target_df
-        st.toast(f"✅ フェーズ2 (ライバー名補完): {update_record_count}件のレコードのライバー名が更新されました。", icon="✅")
-
-
-    # ---------------------------------------------------------
-    # ★★★ 新規追加: フェーズ3 (順位/P/Lvの全期間更新) ★★★
-    # ---------------------------------------------------------
-    if st.session_state.get('update_phase_3_trigger', False):
-        st.session_state.update_phase_3_trigger = False
-        target_df = st.session_state.df_all
-        
-        # event_id と ルームID が両方あり、かつevent_idが数値/空文字ではない行を抽出 (必須条件)
-        # event_idが空の場合はAPIを叩けないため除外
-        mask = (target_df["event_id"] != '') & (target_df["ルームID"] != '')
-        rows_to_update = target_df[mask]
-        
-        update_count = 0
-        
-        with st.spinner(f"フェーズ3: 順位/P/Lvの全期間 ({len(rows_to_update)}レコード) 更新中..."):
-            for idx, row in rows_to_update.iterrows():
-                event_id = row.get("event_id")
-                room_id_to_update = row.get("ルームID")
-                
-                # event_idとroom_idを渡して最新のstatsを取得
-                stats = get_event_stats_from_roomlist(event_id, room_id_to_update)
-                
-                if stats:
-                    target_df.at[idx, "順位"] = stats.get("rank") or "-"
-                    target_df.at[idx, "ポイント"] = stats.get("point") or 0
-                    target_df.at[idx, "レベル"] = stats.get("quest_level") or 0
-                    update_count += 1
-                    
-                time.sleep(0.1) # API負荷軽減
-                
-        st.session_state.df_all = target_df
-        st.toast(f"✅ フェーズ3 (全期間データ更新): {update_count}件のレコードが更新されました。", icon="✅")
-
-    # -------------------------------------------------------------------------------------
-    # ★★★ 更新後のdf_allを反映させるため、ここで df を再構築し、日付整形とフラグを再計算 ★★★
-    # -------------------------------------------------------------------------------------
-    df_all = st.session_state.df_all.copy()
-    df = df_all.copy()
-    
-    # 日付整形とタイムスタンプ追加
-    df["開始日時"] = df["開始日時"].apply(fmt_time)
-    df["終了日時"] = df["終了日時"].apply(fmt_time)
-    df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
-    df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
-    
-    # 開催中判定
-    now_ts = int(datetime.now(JST).timestamp())
-    today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-    df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
-    df["is_end_today"] = df["__end_ts"].apply(lambda x: pd.notna(x) and today_ts <= x < (today_ts + 86400))
-    # -------------------------------------------------------------------------------------
 
     # 4. フィルタリングの適用（デフォルトフィルタリングまで）
     df_filtered = df.copy()
@@ -472,42 +346,17 @@ if is_admin:
         reverse=True
     )
 
-    # 3. UIコンポーネント (フィルタ、最新化ボタン, ★★★ 新規更新ボタン群 ★★★)
+    # 3. UIコンポーネント (フィルタ、最新化ボタン)
+    # ★★★ 修正: 横並びを廃止し、折りたためるセクション内で縦に配置する (レスポンシブ対応) ★★★
     with st.expander("⚙️ 個別機能・絞り込みオプション"):
         
-        # 1. 既存の開催中イベント最新化ボタン
+        # 1. 最新化ボタン
         st.button(
             "🔄 開催中イベントの最新化", 
             on_click=refresh_data, 
             key="admin_refresh_button"
         )
         
-        st.markdown("---") # 区切り線
-        st.markdown("**📊 データベース更新機能 (3フェーズ)**")
-        
-        # ★★★ 新規: フェーズ1 ボタン ★★★
-        st.button(
-            "1️⃣ event_idの補完 (URL -> event_id)",
-            on_click=trigger_update_phase_1,
-            key="admin_update_phase_1_button"
-        )
-        
-        # ★★★ 新規: フェーズ2 ボタン ★★★
-        st.button(
-            "2️⃣ ライバー名の補完 (ルームID -> ライバー名)",
-            on_click=trigger_update_phase_2,
-            key="admin_update_phase_2_button"
-        )
-        
-        # ★★★ 新規: フェーズ3 ボタン ★★★
-        st.button(
-            "3️⃣ 順位/P/Lvの全期間更新 (event_id -> 最新データ)",
-            on_click=trigger_update_phase_3,
-            key="admin_update_phase_3_button"
-        )
-        
-        st.markdown("---") # 区切り線
-
         # 2. 全量表示トグル
         st.checkbox(
             "全量表示（期間フィルタ無効）", 
