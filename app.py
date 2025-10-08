@@ -381,6 +381,224 @@ if is_admin:
             key='admin_start_date_filter',
         )
         
+        
+        
+        # ============================================================
+        # 🧭 管理者専用：イベントDB更新機能（既存履歴ビューアと独立動作）
+        # ============================================================
+        if is_admin:
+            st.markdown("---")
+            st.markdown("### 🧩 イベントデータベース更新機能（管理者専用）")
+
+            import ftplib, traceback, socket, concurrent.futures
+            from typing import List, Dict, Any
+
+            API_ROOM_LIST = "https://www.showroom-live.com/api/event/room_list"
+            API_CONTRIBUTION = "https://www.showroom-live.com/api/event/contribution_ranking"
+            ROOM_LIST_URL = "https://mksoul-pro.com/showroom/file/room_list.csv"
+            ARCHIVE_URL = "https://mksoul-pro.com/showroom/file/sr-event-archive.csv"
+            HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; mksoul-bot/1.0)"}
+            JST = pytz.timezone("Asia/Tokyo")
+
+            # ------------------------------------------------------------
+            # 既存ロジック移植（堅牢なGET / FTPアップロード）
+            # ------------------------------------------------------------
+            def http_get_json(url, params=None, retries=3, timeout=12, backoff=0.6):
+                for i in range(retries):
+                    try:
+                        r = requests.get(url, headers=HEADERS, params=params, timeout=timeout)
+                        if r.status_code == 429:
+                            time.sleep(backoff * (i + 2))
+                            continue
+                        if r.status_code == 200:
+                            return r.json()
+                        if r.status_code in (404, 410):
+                            return None
+                    except (requests.RequestException, socket.timeout):
+                        time.sleep(backoff * (i + 1))
+                return None
+
+            def ftp_upload_bytes(file_path: str, content_bytes: bytes, retries: int = 2):
+                ftp_info = st.secrets.get("ftp", {})
+                host = ftp_info.get("host")
+                user = ftp_info.get("user")
+                password = ftp_info.get("password")
+                if not host or not user:
+                    raise RuntimeError("FTP情報が st.secrets['ftp'] に存在しません。")
+                for i in range(retries):
+                    try:
+                        with ftplib.FTP(host, timeout=30) as ftp:
+                            ftp.login(user, password)
+                            with io.BytesIO(content_bytes) as bf:
+                                bf.seek(0)
+                                ftp.storbinary(f"STOR {file_path}", bf)
+                        return True
+                    except Exception:
+                        time.sleep(1 + i)
+                raise
+
+            def fmt_time(ts):
+                try:
+                    if ts is None:
+                        return ""
+                    ts = int(ts)
+                    if ts > 20000000000:
+                        ts //= 1000
+                    return datetime.fromtimestamp(ts, JST).strftime("%Y/%m/%d %H:%M")
+                except Exception:
+                    return ""
+
+            # ------------------------------------------------------------
+            # イベントDB範囲確認（DB内最新ID / 開催予定API最新ID）
+            # ------------------------------------------------------------
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("📊 DB内の最新イベントIDを確認", key="check_db_latest_id"):
+                    try:
+                        df_db = load_event_db(EVENT_DB_URL)
+                        latest = pd.to_numeric(df_db["event_id"], errors="coerce").max()
+                        st.success(f"現在のevent_database.csvの最新ID: {int(latest)}")
+                    except Exception as e:
+                        st.error(f"取得失敗: {e}")
+
+            with col2:
+                if st.button("🌐 SHOWROOM開催予定イベントの最新IDを確認", key="check_api_latest_id"):
+                    try:
+                        latest_id = 0
+                        for p in range(1, 6):
+                            data = http_get_json("https://www.showroom-live.com/api/event/search",
+                                                 params={"status": 3, "page": p})
+                            if not data or "event_list" not in data:
+                                break
+                            ids = [int(ev["event_id"]) for ev in data["event_list"] if "event_id" in ev]
+                            if ids:
+                                latest_id = max(latest_id, max(ids))
+                            time.sleep(0.2)
+                        if latest_id:
+                            st.success(f"SHOWROOM開催予定イベントの最新ID: {latest_id}")
+                        else:
+                            st.warning("取得できませんでした。")
+                    except Exception as e:
+                        st.error(f"API取得失敗: {e}")
+
+            st.markdown("---")
+            st.markdown("#### 🚀 データベース更新実行")
+
+            start_id = st.number_input("スキャン開始イベントID", min_value=1, value=40290, step=1)
+            end_id = st.number_input("スキャン終了イベントID", min_value=start_id, value=start_id + 10, step=1)
+            max_workers = st.number_input("並列処理数", min_value=1, max_value=30, value=3)
+            save_interval = st.number_input("途中保存間隔（件）", min_value=50, value=200, step=50)
+            ftp_path = st.text_input("FTP保存パス", value="/mksoul-pro.com/showroom/file/event_database.csv")
+
+            # ------------------------------------------------------------
+            # 実行ボタン
+            # ------------------------------------------------------------
+            if st.button("🔄 イベントDB更新開始", key="run_db_update"):
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+
+                st.info("データ収集を開始します。")
+                progress = st.progress(0)
+                managed_rooms = pd.read_csv(ROOM_LIST_URL, dtype=str)
+                archive_url = ARCHIVE_URL
+
+                def process_event(event_id):
+                    """イベント単位で room_list を処理"""
+                    recs = []
+                    entries = []
+                    page = 1
+                    while True:
+                        data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": page})
+                        if not data or "list" not in data:
+                            break
+                        entries.extend(data["list"])
+                        if not data.get("next_page"):
+                            break
+                        page += 1
+                        time.sleep(0.03)
+
+                    if not entries:
+                        return []
+
+                    managed_ids = set(managed_rooms["ルームID"].astype(str))
+                    matched = [e for e in entries if str(e.get("room_id")) in managed_ids]
+                    if not matched:
+                        return []
+
+                    detail = None
+                    for e in matched:
+                        rid = str(e.get("room_id"))
+                        data2 = http_get_json(API_CONTRIBUTION, params={"event_id": event_id, "room_id": rid})
+                        if data2 and "event" in data2:
+                            detail = data2["event"]
+                            break
+
+                    for e in matched:
+                        rid = str(e.get("room_id"))
+                        rank = e.get("rank") or e.get("position") or "-"
+                        point = e.get("point") or e.get("total_point") or 0
+                        quest = e.get("event_entry", {}).get("quest_level") if isinstance(e.get("event_entry"), dict) else e.get("quest_level") or 0
+                        recs.append({
+                            "PR対象": "",
+                            "ライバー名": e.get("room_name", ""),
+                            "アカウントID": e.get("account_id", ""),
+                            "イベント名": detail.get("event_name") if detail else "",
+                            "開始日時": fmt_time(detail.get("started_at")) if detail else "",
+                            "終了日時": fmt_time(detail.get("ended_at")) if detail else "",
+                            "順位": rank,
+                            "ポイント": point,
+                            "備考": "",
+                            "紐付け": "○",
+                            "URL": detail.get("event_url") if detail else "",
+                            "レベル": quest,
+                            "event_id": str(event_id),
+                            "ルームID": rid,
+                            "イベント画像（URL）": (detail.get("image") if detail else "")
+                        })
+                    return recs
+
+                valid_ids = []
+                for eid in range(int(start_id), int(end_id) + 1):
+                    data = http_get_json(API_ROOM_LIST, params={"event_id": eid, "p": 1})
+                    if data and ("list" in data and data["list"]):
+                        valid_ids.append(eid)
+                    time.sleep(0.03)
+
+                all_records = []
+                total = len(valid_ids)
+                done = 0
+                with ThreadPoolExecutor(max_workers=int(max_workers)) as ex:
+                    futures = {ex.submit(process_event, eid): eid for eid in valid_ids}
+                    for fut in as_completed(futures):
+                        eid = futures[fut]
+                        try:
+                            recs = fut.result()
+                            all_records.extend(recs)
+                        except Exception as e:
+                            st.error(f"event_id={eid}: {e}")
+                        done += 1
+                        progress.progress(done / total)
+
+                if not all_records:
+                    st.warning("収集結果は空です。")
+                else:
+                    df_new = pd.DataFrame(all_records)
+                    try:
+                        existing_df = load_event_db(EVENT_DB_URL)
+                    except Exception:
+                        existing_df = pd.DataFrame()
+
+                    merged_df = pd.concat([existing_df, df_new], ignore_index=True).drop_duplicates(subset=["event_id", "ルームID"], keep="last")
+                    csv_bytes = merged_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+                    try:
+                        ftp_upload_bytes(ftp_path, csv_bytes)
+                        st.success(f"✅ 更新完了: {len(merged_df)} 件を保存しました。")
+                    except Exception as e:
+                        st.warning(f"FTPアップロード失敗: {e}")
+                        st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_database.csv")
+
+        
+        
+        
     # 4. プルダウンフィルタの適用
     if selected_end_date != "全期間":
         df_filtered = df_filtered[df_filtered["終了日時"].str.startswith(selected_end_date)].copy()
