@@ -493,13 +493,44 @@ if is_admin:
             # ------------------------------------------------------------
             # 実行ボタン
             # ------------------------------------------------------------
-            if st.button("🔄 イベントDB更新開始", key="run_db_update"):
+            # ------------------------------------------------------------
+            # 改良版：イベントDB更新処理
+            # ------------------------------------------------------------
+
+            # ✅ ID入力欄（変更しても即再実行されないようセッションステート制御）
+            tmp_start_id = st.number_input("スキャン開始イベントID", min_value=1, value=40290, step=1, key="tmp_start_id")
+            tmp_end_id = st.number_input("スキャン終了イベントID", min_value=tmp_start_id, value=tmp_start_id + 10, step=1, key="tmp_end_id")
+
+            if "scan_start_id" not in st.session_state:
+                st.session_state.scan_start_id = tmp_start_id
+            if "scan_end_id" not in st.session_state:
+                st.session_state.scan_end_id = tmp_end_id
+
+            col_confirm, col_run = st.columns([1, 2])
+            with col_confirm:
+                if st.button("📝 ID範囲を確定", key="confirm_id_range"):
+                    st.session_state.scan_start_id = tmp_start_id
+                    st.session_state.scan_end_id = tmp_end_id
+                    st.success(f"範囲を確定しました: {tmp_start_id}〜{tmp_end_id}")
+
+            start_id = st.session_state.scan_start_id
+            end_id = st.session_state.scan_end_id
+
+            max_workers = st.number_input("並列処理数", min_value=1, max_value=30, value=3)
+            save_interval = st.number_input("途中保存間隔（件）", min_value=50, value=200, step=50)
+            ftp_path = st.text_input("FTP保存パス", value="/mksoul-pro.com/showroom/file/event_database.csv")
+
+            with col_run:
+                run_clicked = st.button("🔄 イベントDB更新開始", key="run_db_update")
+
+            if run_clicked:
                 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-                st.info("データ収集を開始します。")
+                st.info(f"イベントID {start_id}〜{end_id} の範囲でデータ収集を開始します。")
+                st.caption("※処理開始後すぐに進捗バーが表示されます。")
+
                 progress = st.progress(0)
                 managed_rooms = pd.read_csv(ROOM_LIST_URL, dtype=str)
-                archive_url = ARCHIVE_URL
 
                 def process_event(event_id):
                     """イベント単位で room_list を処理"""
@@ -556,23 +587,20 @@ if is_admin:
                         })
                     return recs
 
-                valid_ids = []
-                for eid in range(int(start_id), int(end_id) + 1):
-                    data = http_get_json(API_ROOM_LIST, params={"event_id": eid, "p": 1})
-                    if data and ("list" in data and data["list"]):
-                        valid_ids.append(eid)
-                    time.sleep(0.03)
-
+                ids_to_process = list(range(int(start_id), int(end_id) + 1))
                 all_records = []
-                total = len(valid_ids)
+                total = len(ids_to_process)
                 done = 0
+
+                # ✅ 改良：有効IDチェックをスキップ → すぐに進捗バー表示
                 with ThreadPoolExecutor(max_workers=int(max_workers)) as ex:
-                    futures = {ex.submit(process_event, eid): eid for eid in valid_ids}
+                    futures = {ex.submit(process_event, eid): eid for eid in ids_to_process}
                     for fut in as_completed(futures):
                         eid = futures[fut]
                         try:
                             recs = fut.result()
-                            all_records.extend(recs)
+                            if recs:
+                                all_records.extend(recs)
                         except Exception as e:
                             st.error(f"event_id={eid}: {e}")
                         done += 1
@@ -587,47 +615,25 @@ if is_admin:
                     except Exception:
                         existing_df = pd.DataFrame()
 
-                    # --- 既存データを基に最新情報を反映（順位・ポイント・レベルを上書き） ---
                     merged_df = existing_df.copy()
-
-                    # 型統一（安全対策）
-                    merged_df["event_id"] = merged_df["event_id"].astype(str)
-                    merged_df["ルームID"] = merged_df["ルームID"].astype(str)
-                    df_new["event_id"] = df_new["event_id"].astype(str)
-                    df_new["ルームID"] = df_new["ルームID"].astype(str)
-
-                    updated_rows = 0
-                    added_rows = 0
-
                     for _, new_row in df_new.iterrows():
-                        eid = str(new_row["event_id"])
-                        rid = str(new_row["ルームID"])
-                        mask = (merged_df["event_id"] == eid) & (merged_df["ルームID"] == rid)
-
+                        key = (str(new_row["event_id"]), str(new_row["ルームID"]))
+                        mask = (merged_df["event_id"].astype(str) == key[0]) & (merged_df["ルームID"].astype(str) == key[1])
                         if mask.any():
-                            idx = mask.idxmax()
-                            # 主要情報を更新（空欄でも上書きする）
-                            for col in ["順位", "ポイント", "レベル", "イベント名", "開始日時", "終了日時", "URL"]:
-                                merged_df.at[idx, col] = new_row.get(col, merged_df.at[idx, col])
-                            updated_rows += 1
+                            idx = merged_df[mask].index[0]
+                            for c in ["順位", "ポイント", "レベル", "備考"]:
+                                val = new_row[c]
+                                if pd.notna(val) and str(val).strip() != "":
+                                    merged_df.at[idx, c] = val
                         else:
-                            # 新規行として追加
                             merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
-                            added_rows += 1
 
-                    st.write(f"更新済み: {updated_rows}件 / 新規追加: {added_rows}件")
-
-                    # --- ソート順：event_id降順, ルームID昇順 ---
+                    # ソート順：event_id降順, ルームID昇順
                     merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
                     merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
                     merged_df.drop(columns=["event_id_num"], inplace=True)
 
-                    # --- ソート順：event_id降順, ルームID昇順 ---
-                    merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
-                    merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
-                    merged_df.drop(columns=["event_id_num"], inplace=True)
-
-                    # --- CSV保存 ---
+                    # CSV保存
                     csv_bytes = merged_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
                     try:
                         ftp_upload_bytes(ftp_path, csv_bytes)
