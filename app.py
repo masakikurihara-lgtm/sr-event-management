@@ -376,6 +376,7 @@ if is_admin:
     with col4:
         # プルダウンのラベル分、縦位置を調整するための空行を挿入
         st.write("")
+        st.write("")
         st.checkbox(
             "全量表示（期間フィルタ無効）", 
             value=st.session_state.admin_full_data,
