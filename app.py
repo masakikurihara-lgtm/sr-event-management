@@ -31,11 +31,11 @@ HISTORICAL_EVENT_ID_START = 40000 # 過去2年以上に遡る際のイベントI
 
 # ---------- ポイントハイライト用のカラー定義 ----------
 HIGHLIGHT_COLORS = {
-    1: "background-color: #ff7f7f;", # 1位
-    2: "background-color: #ff9999;", # 2位
-    3: "background-color: #ffb2b2;", # 3位
-    4: "background-color: #ffcccc;", # 4位
-    5: "background-color: #ffe5e5;", # 5位
+    1: "background-color: #ff7f7f;", # 1位
+    2: "background-color: #ff9999;", # 2位
+    3: "background-color: #ffb2b2;", # 3位
+    4: "background-color: #ffcccc;", # 4位
+    5: "background-color: #ffe5e5;", # 5位
 }
 # ★★★ 管理者用: 終了日時当日のハイライトカラー ★★★
 END_TODAY_HIGHLIGHT = "background-color: #ffb2b2;" # 赤系
