@@ -346,39 +346,44 @@ if is_admin:
         reverse=True
     )
 
-    # 3. UIコンポーネント (フィルタ、最新化ボタン)
-    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
-    
-    # 最新化ボタン
-    with col1:
-        st.button("🔄 開催中イベントの最新化", on_click=refresh_data, key="admin_refresh_button")
+    # 3. UIコンポーネント (フィルタ、最新化ボタン)
+    # ★★★ 修正: カラム幅を調整し、プルダウンとボタン/チェックボックスの縦位置を揃える ★★★
+    col1, col2, col3, col4 = st.columns([1.2, 1.3, 1.3, 0.8])
+    
+    # 最新化ボタン
+    with col1:
+        # プルダウンのラベル分、縦位置を調整するための空行を挿入
+        st.write("") # st.write("")は改行（空のpタグ）を出力するため、ボタンが下に移動します。
+        st.button("🔄 開催中イベントの最新化", on_click=refresh_data, key="admin_refresh_button")
 
-    # 終了日時フィルタリング
-    with col2:
-        selected_end_date = st.selectbox(
-            "終了日時で絞り込み",
-            options=["全期間"] + unique_end_dates,
-            key='admin_end_date_filter',
-        )
+    # 終了日時フィルタリング
+    with col2:
+        selected_end_date = st.selectbox(
+            "終了日時で絞り込み",
+            options=["全期間"] + unique_end_dates,
+            key='admin_end_date_filter',
+        )
 
-    # 開始日時フィルタリング
-    with col3:
-        selected_start_date = st.selectbox(
-            "開始日時で絞り込み",
-            options=["全期間"] + unique_start_dates,
-            key='admin_start_date_filter',
-        )
+    # 開始日時フィルタリング
+    with col3:
+        selected_start_date = st.selectbox(
+            "開始日時で絞り込み",
+            options=["全期間"] + unique_start_dates,
+            key='admin_start_date_filter',
+        )
 
-    # 全量表示トグル
-    with col4:
-        st.checkbox(
-            "全量表示（期間フィルタ無効）", 
-            value=st.session_state.admin_full_data,
-            key="admin_full_data_checkbox_internal",
-            on_change=toggle_full_data
-        )
-        
-    # 4. プルダウンフィルタの適用
+    # 全量表示トグル
+    with col4:
+        # プルダウンのラベル分、縦位置を調整するための空行を挿入
+        st.write("")
+        st.checkbox(
+            "全量表示（期間フィルタ無効）", 
+            value=st.session_state.admin_full_data,
+            key="admin_full_data_checkbox_internal",
+            on_change=toggle_full_data
+        )
+        
+    # 4. プルダウンフィルタの適用
     if selected_end_date != "全期間":
         df_filtered = df_filtered[df_filtered["終了日時"].str.startswith(selected_end_date)].copy()
     if selected_start_date != "全期間":
