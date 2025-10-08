@@ -11,7 +11,6 @@ import numpy as np # pandasでNaNを扱うために追記
 JST = pytz.timezone("Asia/Tokyo")
 
 EVENT_DB_URL = "https://mksoul-pro.com/showroom/file/event_database.csv"
-ROOM_LIST_URL = "https://mksoul-pro.com/showroom/file/room_list.csv"
 API_ROOM_PROFILE = "https://www.showroom-live.com/api/room/profile"
 API_ROOM_LIST = "https://www.showroom-live.com/api/event/room_list"
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; mksoul-view/1.4)"}
@@ -125,9 +124,6 @@ def load_event_db(url):
         # 欠損値（空の文字列を含む）をNaNに変換し、NaNを空文字列に戻すことで処理を統一
         df[c] = df[c].replace('', np.nan).fillna('')
     return df
-
-
-
 
 
 def get_room_name(room_id):
