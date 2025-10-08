@@ -587,7 +587,28 @@ if is_admin:
                     except Exception:
                         existing_df = pd.DataFrame()
 
-                    merged_df = pd.concat([existing_df, df_new], ignore_index=True).drop_duplicates(subset=["event_id", "ルームID"], keep="last")
+                    # --- 既存データを基に最新情報を反映 ---
+                    merged_df = existing_df.copy()
+
+                    for _, new_row in df_new.iterrows():
+                        key = (str(new_row["event_id"]), str(new_row["ルームID"]))
+                        mask = (merged_df["event_id"].astype(str) == key[0]) & (merged_df["ルームID"].astype(str) == key[1])
+                        if mask.any():
+                            idx = merged_df[mask].index[0]
+                            # 順位・ポイント・レベル・備考を更新（空欄以外のみ上書き）
+                            for c in ["順位", "ポイント", "レベル", "備考"]:
+                                val = new_row[c]
+                                if pd.notna(val) and str(val).strip() != "":
+                                    merged_df.at[idx, c] = val
+                        else:
+                            merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
+
+                    # --- ソート順：event_id降順, ルームID昇順 ---
+                    merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
+                    merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
+                    merged_df.drop(columns=["event_id_num"], inplace=True)
+
+                    # --- CSV保存 ---
                     csv_bytes = merged_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
                     try:
                         ftp_upload_bytes(ftp_path, csv_bytes)
