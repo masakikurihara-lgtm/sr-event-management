@@ -11,6 +11,7 @@ import numpy as np # pandasでNaNを扱うために追記
 JST = pytz.timezone("Asia/Tokyo")
 
 EVENT_DB_URL = "https://mksoul-pro.com/showroom/file/event_database.csv"
+ROOM_LIST_URL = "https://mksoul-pro.com/showroom/file/room_list.csv"
 API_ROOM_PROFILE = "https://www.showroom-live.com/api/room/profile"
 API_ROOM_LIST = "https://www.showroom-live.com/api/event/room_list"
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; mksoul-view/1.4)"}
@@ -124,6 +125,53 @@ def load_event_db(url):
         # 欠損値（空の文字列を含む）をNaNに変換し、NaNを空文字列に戻すことで処理を統一
         df[c] = df[c].replace('', np.nan).fillna('')
     return df
+
+
+# ---------------------------------------------------------
+# ✅ APIキャッシュ機能（提案②）
+# ---------------------------------------------------------
+_room_name_cache_local = {}
+_event_stats_cache_local = {}
+
+def get_room_name_cached(room_id):
+    """キャッシュ付きルーム名取得"""
+    if not room_id:
+        return ""
+    if room_id in _room_name_cache_local:
+        return _room_name_cache_local[room_id]
+
+    data = http_get_json(API_ROOM_PROFILE, params={"room_id": room_id})
+    if data and isinstance(data, dict):
+        name = data.get("room_name") or data.get("name") or ""
+        _room_name_cache_local[room_id] = name
+        return name
+    _room_name_cache_local[room_id] = ""
+    return ""
+
+def get_event_stats_from_roomlist_cached(event_id, room_id):
+    """キャッシュ付きイベントステータス取得"""
+    key = f"{event_id}_{room_id}"
+    if key in _event_stats_cache_local:
+        return _event_stats_cache_local[key]
+
+    data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": 1})
+    if not data or "list" not in data:
+        _event_stats_cache_local[key] = None
+        return None
+
+    for entry in data["list"]:
+        if str(entry.get("room_id")) == str(room_id):
+            result = {
+                "rank": entry.get("rank") or entry.get("position"),
+                "point": entry.get("point") or entry.get("event_point") or entry.get("total_point"),
+                "quest_level": entry.get("quest_level") or entry.get("event_entry", {}).get("quest_level"),
+            }
+            _event_stats_cache_local[key] = result
+            return result
+
+    _event_stats_cache_local[key] = None
+    return None
+
 
 
 def get_room_name(room_id):
