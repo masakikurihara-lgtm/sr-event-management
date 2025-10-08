@@ -494,40 +494,21 @@ if is_admin:
             # 実行ボタン
             # ------------------------------------------------------------
             # ------------------------------------------------------------
-            # 改良版：イベントDB更新処理（Duplicate ID対策込み）
+            # 改良版：イベントDB更新処理
             # ------------------------------------------------------------
 
-            # ✅ 一時入力（セッションステートを使ってリロード時も保持）
-            if "tmp_start_id" not in st.session_state:
-                st.session_state.tmp_start_id = 40290
-            if "tmp_end_id" not in st.session_state:
-                st.session_state.tmp_end_id = 40300
-            if "scan_start_id" not in st.session_state:
-                st.session_state.scan_start_id = st.session_state.tmp_start_id
-            if "scan_end_id" not in st.session_state:
-                st.session_state.scan_end_id = st.session_state.tmp_end_id
+            # ✅ ID入力欄（変更しても即再実行されないようセッションステート制御）
+            tmp_start_id = st.number_input("スキャン開始イベントID", min_value=1, value=40290, step=1, key="tmp_start_id")
+            tmp_end_id = st.number_input("スキャン終了イベントID", min_value=tmp_start_id, value=tmp_start_id + 10, step=1, key="tmp_end_id")
 
-            # --- ID入力欄（別keyを明示して重複回避） ---
-            tmp_start_id = st.number_input(
-                "スキャン開始イベントID",
-                min_value=1,
-                value=st.session_state.tmp_start_id,
-                step=1,
-                key="input_start_id_unique"
-            )
-            tmp_end_id = st.number_input(
-                "スキャン終了イベントID",
-                min_value=tmp_start_id,
-                value=max(st.session_state.tmp_end_id, tmp_start_id + 1),
-                step=1,
-                key="input_end_id_unique"
-            )
+            if "scan_start_id" not in st.session_state:
+                st.session_state.scan_start_id = tmp_start_id
+            if "scan_end_id" not in st.session_state:
+                st.session_state.scan_end_id = tmp_end_id
 
             col_confirm, col_run = st.columns([1, 2])
             with col_confirm:
                 if st.button("📝 ID範囲を確定", key="confirm_id_range"):
-                    st.session_state.tmp_start_id = tmp_start_id
-                    st.session_state.tmp_end_id = tmp_end_id
                     st.session_state.scan_start_id = tmp_start_id
                     st.session_state.scan_end_id = tmp_end_id
                     st.success(f"範囲を確定しました: {tmp_start_id}〜{tmp_end_id}")
@@ -535,31 +516,13 @@ if is_admin:
             start_id = st.session_state.scan_start_id
             end_id = st.session_state.scan_end_id
 
-            # --- その他設定（重複防止のためkeyをすべて指定） ---
-            max_workers = st.number_input(
-                "並列処理数", 
-                min_value=1, 
-                max_value=30, 
-                value=3, 
-                key="num_workers_unique"
-            )
-            save_interval = st.number_input(
-                "途中保存間隔（件）", 
-                min_value=50, 
-                value=200, 
-                step=50, 
-                key="save_interval_unique"
-            )
-            ftp_path = st.text_input(
-                "FTP保存パス", 
-                value="/mksoul-pro.com/showroom/file/event_database.csv",
-                key="ftp_path_unique"
-            )
+            max_workers = st.number_input("並列処理数", min_value=1, max_value=30, value=3)
+            save_interval = st.number_input("途中保存間隔（件）", min_value=50, value=200, step=50)
+            ftp_path = st.text_input("FTP保存パス", value="/mksoul-pro.com/showroom/file/event_database.csv")
 
             with col_run:
-                run_clicked = st.button("🔄 イベントDB更新開始", key="run_db_update_unique")
+                run_clicked = st.button("🔄 イベントDB更新開始", key="run_db_update")
 
-            # --- 実行処理 ---
             if run_clicked:
                 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -629,6 +592,7 @@ if is_admin:
                 total = len(ids_to_process)
                 done = 0
 
+                # ✅ 改良：有効IDチェックをスキップ → すぐに進捗バー表示
                 with ThreadPoolExecutor(max_workers=int(max_workers)) as ex:
                     futures = {ex.submit(process_event, eid): eid for eid in ids_to_process}
                     for fut in as_completed(futures):
@@ -664,10 +628,12 @@ if is_admin:
                         else:
                             merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
 
+                    # ソート順：event_id降順, ルームID昇順
                     merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
                     merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
                     merged_df.drop(columns=["event_id_num"], inplace=True)
 
+                    # CSV保存
                     csv_bytes = merged_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
                     try:
                         ftp_upload_bytes(ftp_path, csv_bytes)
