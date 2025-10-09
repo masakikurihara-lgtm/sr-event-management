@@ -276,11 +276,11 @@ if is_admin:
     # 2. 開催中判定
     now_ts = int(datetime.now(JST).timestamp())
     today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-    df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
-    
+    # 修正前: df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
+    df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts - 3600) # ★★★ 修正後 ★★★
+
     # 終了日時が当日（今日0時〜明日0時の間）の判定
     df["is_end_today"] = df["__end_ts"].apply(lambda x: pd.notna(x) and today_ts <= x < (today_ts + 86400))
-
 
     # ★★★ 修正 (5. 開催中イベント最新化) - 自動最新化/ボタン最新化をここで実行 ★★★
     if is_admin or st.session_state.get('refresh_trigger', False):
@@ -311,7 +311,9 @@ if is_admin:
         df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
         now_ts = int(datetime.now(JST).timestamp())
         today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
+        # 修正前: df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
+        df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts - 3600) # ★★★ 修正後 ★★★
+
         df["is_end_today"] = df["__end_ts"].apply(lambda x: pd.notna(x) and today_ts <= x < (today_ts + 86400))
     # ★★★ 修正ブロック終了 ★★★
 
@@ -830,7 +832,8 @@ elif room_id != "":
     
     # 4. 開催中判定
     now_ts = int(datetime.now(JST).timestamp())
-    df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
+    # 修正前: df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
+    df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts - 3600) # ★★★ 修正後 ★★★
 
     # 5. 開催中イベント最新化 (ライバーモードは実行時に自動最新化)
     ongoing = df[df["is_ongoing"]]
