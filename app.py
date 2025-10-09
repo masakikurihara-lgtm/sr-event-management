@@ -1113,7 +1113,7 @@ else:
     # ★★★ 修正箇所ここまで ★★★    
     
     st.markdown(make_html_table_user(df_show, room_id), unsafe_allow_html=True)
-    st.caption("2023年9月以降に開始された参加イベントを表示しています。黄色行は現在開催中（終了日時が未来）のイベントです。※ハイライトはイベント終了後、1時間後に消えます。")
+    st.caption("2023年9月以降に開始された参加イベントを表示しています。黄色ハイライト行は現在開催中（終了日時が未来）のイベントです。※ハイライトはイベント終了後、1時間後に消えます。")
 
     # CSV出力
     cols_to_drop = [c for c in ["is_ongoing", "__highlight_style", "URL", "ルームID"] if c in df_show.columns]
