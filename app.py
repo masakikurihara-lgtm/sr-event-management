@@ -226,7 +226,6 @@ st.title("🎤 SHOWROOM 参加イベントビューア")
 
 st.text_input(
     "表示するルームIDを入力してください:", 
-    "表示するルームIDを入力してください:", 
     value=st.session_state.room_input_value, 
     key="room_id_input", 
     on_change=save_room_id
