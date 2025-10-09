@@ -228,6 +228,7 @@ def toggle_full_data():
 
 # ---------- UI ----------
 st.title("🎤 SHOWROOM 参加イベントビューア")
+st.write("")
 
 
 # ▼▼ 認証ステップ ▼▼
