@@ -228,7 +228,8 @@ def toggle_full_data():
 
 
 # ---------- UI ----------
-st.title("🎤 SHOWROOM 参加イベントビューア")
+st.markdown("<h1 style='font-size:2.5em;'>🎤 SHOWROOM 参加イベントビューア</h1>", unsafe_allow_html=True)
+#st.title("🎤 SHOWROOM 参加イベントビューア")
 st.write("")
 
 
