@@ -764,7 +764,6 @@ if is_admin:
 
 
 
-
                         
     # 4. プルダウンフィルタの適用
     if selected_end_date != "全期間":
