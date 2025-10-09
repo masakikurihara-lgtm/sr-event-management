@@ -350,28 +350,12 @@ if is_admin:
     # ★★★ 修正: 横並びを廃止し、折りたためるセクション内で縦に配置する (レスポンシブ対応) ★★★
     with st.expander("⚙️ 個別機能・絞り込みオプション"):
         
-        # 1. 最新化ボタン
-        st.button(
-            "🔄 開催中イベントの最新化", 
-            on_click=refresh_data, 
-            key="admin_refresh_button"
-        )
-        
-        # 2. 全量表示トグル
-        st.checkbox(
-            "全量表示（期間フィルタ無効）", 
-            value=st.session_state.admin_full_data,
-            key="admin_full_data_checkbox_internal",
-            on_change=toggle_full_data
-        )
-
-
 
         # ============================================================
         # 🧭 管理者専用：イベントDB更新機能（既存履歴ビューアと独立動作）
         # ============================================================
         if is_admin:
-            st.markdown("---")
+            #st.markdown("---")
             st.markdown("### 🧩 イベントデータベース更新機能（管理者専用）")
 
             import ftplib, traceback, socket, concurrent.futures
@@ -764,7 +748,27 @@ if is_admin:
             options=["全期間"] + unique_start_dates,
             key='admin_start_date_filter',
         )
+
+        st.markdown("---") # 区切り線
         
+                # 1. 最新化ボタン
+        st.button(
+            "🔄 開催中イベントの最新化", 
+            on_click=refresh_data, 
+            key="admin_refresh_button"
+        )
+
+        st.markdown("---") # 区切り線
+        
+        # 2. 全量表示トグル
+        st.checkbox(
+            "全量表示（期間フィルタ無効）", 
+            value=st.session_state.admin_full_data,
+            key="admin_full_data_checkbox_internal",
+            on_change=toggle_full_data
+        )
+
+        st.markdown("") #空白行 
         
                                 
     # 4. プルダウンフィルタの適用
