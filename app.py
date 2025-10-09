@@ -998,15 +998,15 @@ def make_html_table_admin(df):
     thead th {{ position: sticky; top: 0; background: #0b66c2; color: #fff; padding: 5px; text-align: center; border: 1px solid #0b66c2; z-index: 10; }}
     tbody td {{ padding: 5px; border-bottom: 1px solid #f2f2f2; text-align: center; vertical-align: middle; word-wrap: break-word; }}
     /* 管理者用: カラム幅の指定（URL列削除に合わせて調整） */
-    table col:nth-child(1) {{ width: 16%; }} /* ライバー名 */
-    table col:nth-child(2) {{ width: 26%; }} /* イベント名 */
+    table col:nth-child(1) {{ width: 21%; }} /* ライバー名 */
+    table col:nth-child(2) {{ width: 24%; }} /* イベント名 */
     table col:nth-child(3) {{ width: 11%; }} /* 開始日時 */
     table col:nth-child(4) {{ width: 11%; }} /* 終了日時 */
-    table col:nth-child(5) {{ width: 6%; }}  /* 順位 */
-    table col:nth-child(6) {{ width: 12%; }} /* ポイント */
-    table col:nth-child(7) {{ width: 6%; }}  /* レベル */
-    table col:nth-child(8) {{ width: 6%; }}  /* イベントID */
-    table col:nth-child(9) {{ width: 6%; }}  /* ルームID */
+    table col:nth-child(5) {{ width: 5%; }}  /* 順位 */
+    table col:nth-child(6) {{ width: 7%; }} /* ポイント */
+    table col:nth-child(7) {{ width: 5%; }}  /* レベル */
+    table col:nth-child(8) {{ width: 8%; }}  /* イベントID */
+    table col:nth-child(9) {{ width: 8%; }}  /* ルームID */
     
     /* 修正: background-colorプロパティを正しく適用 */
     tr.end_today{{background-color:{end_today_color_code};}} /* 終了日時当日ハイライト */
