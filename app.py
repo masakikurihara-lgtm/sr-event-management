@@ -15,7 +15,7 @@ API_ROOM_PROFILE = "https://www.showroom-live.com/api/room/profile"
 API_ROOM_LIST = "https://www.showroom-live.com/api/event/room_list"
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; mksoul-view/1.4)"}
 
-st.set_page_config(page_title="SHOWROOM：参加イベント履歴ビューア", layout="wide")
+st.set_page_config(page_title="SHOWROOM 参加イベントビューア", layout="wide")
 
 # --------------------
 # フィルタリング基準日（2023年9月1日 00:00:00 JST）のタイムスタンプ
@@ -222,10 +222,10 @@ def toggle_full_data():
 
 
 # ---------- UI ----------
-st.title("🎤 SHOWROOM：参加イベント履歴ビューア")
+st.title("🎤 SHOWROOM 参加イベントビューア")
 
 st.text_input(
-    "表示するルームIDを入力", 
+    "表示するルームIDを入力してください:", 
     value=st.session_state.room_input_value, 
     key="room_id_input", 
     on_change=save_room_id
@@ -1081,7 +1081,7 @@ if is_admin:
     st.markdown(make_html_table_admin(df_show), unsafe_allow_html=True)
     
     end_today_color = END_TODAY_HIGHLIGHT.replace('background-color: ', '').replace(';', '')
-    st.caption(f"黄色行は開催中（終了日時が未来）のイベントです。赤っぽい行（{end_today_color}）は終了日時が今日当日のイベントです。")
+    st.caption(f"2023年9月以降に開始された参加イベントを表示しています。黄色行は開催中（終了日時が未来）のイベントです。赤っぽい行（{end_today_color}）は終了日時が本日のイベントです。")
     
     # CSVダウンロード
     cols_to_drop = [c for c in ["is_ongoing", "is_end_today", "__point_num", "URL", "ルームID", "__display_liver_name"] if c in df_show.columns]
@@ -1112,7 +1112,7 @@ else:
     # ★★★ 修正箇所ここまで ★★★    
     
     st.markdown(make_html_table_user(df_show, room_id), unsafe_allow_html=True)
-    st.caption("黄色行は現在開催中（終了日時が未来）のイベントです。")
+    st.caption("2023年9月以降に開始された参加イベントを表示しています。黄色行は現在開催中（終了日時が未来）のイベントです。")
 
     # CSV出力
     cols_to_drop = [c for c in ["is_ongoing", "__highlight_style", "URL", "ルームID"] if c in df_show.columns]
