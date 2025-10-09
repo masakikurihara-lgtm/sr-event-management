@@ -985,7 +985,16 @@ def make_html_table_user(df, room_id):
     """ライバー用HTMLテーブルを生成（貢献ランクボタン風リンクあり、ポイントハイライトあり、開催中黄色ハイライト）"""
     html = """
     <style>
-    .scroll-table { max-height: 520px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; text-align: center; width: 100%; }
+    .scroll-table {
+    max-height: 520px;
+    overflow-y: auto;
+    overflow-x: auto;      /* 👈 横スクロールを許可 */
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    text-align: center;
+    width: 100%;
+    -webkit-overflow-scrolling: touch; /* 👈 iPhoneなどの慣性スクロール対応 */
+    }
     table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
     thead th { position: sticky; top: 0; background: #0b66c2; color: #fff; padding: 5px; text-align: center; border: 1px solid #0b66c2; z-index: 10; }
     tbody td { padding: 5px; border-bottom: 1px solid #f2f2f2; text-align: center; vertical-align: middle; word-wrap: break-word; }
@@ -1060,7 +1069,7 @@ def make_html_table_admin(df):
     # URL/貢献ランク列を削除した7列構成
     html = f"""
     <style>
-    .scroll-table {{ max-height: 520px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; text-align: center; width: 100%; }}
+    .scroll-table {{ max-height: 520px; overflow-y: auto; overflow-x: auto;　border: 1px solid #ddd; border-radius: 6px; text-align: center; width: 100%; -webkit-overflow-scrolling: touch;}}
     table {{ width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }}
     thead th {{ position: sticky; top: 0; background: #0b66c2; color: #fff; padding: 5px; text-align: center; border: 1px solid #0b66c2; z-index: 10; }}
     tbody td {{ padding: 5px; border-bottom: 1px solid #f2f2f2; text-align: center; vertical-align: middle; word-wrap: break-word; }}
