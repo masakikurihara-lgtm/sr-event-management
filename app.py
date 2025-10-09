@@ -803,7 +803,7 @@ if is_admin:
     df_filtered.sort_values("__end_ts", ascending=False, na_position='last', inplace=True)
     
     # 7. 表示整形
-    disp_cols = ["ライバー名", "イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "イベントID", "ルームID"]
+    disp_cols = ["ライバー名", "イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル"]
     df_show = df_filtered[disp_cols + ["is_ongoing", "is_end_today", "URL", "ルームID", "__display_liver_name"]].copy()
 
     if df_show.empty:
@@ -1000,8 +1000,6 @@ def make_html_table_admin(df):
     table col:nth-child(5) {{ width: 6%; }}  /* 順位 */
     table col:nth-child(6) {{ width: 12%; }} /* ポイント */
     table col:nth-child(7) {{ width: 6%; }}  /* レベル */
-    table col:nth-child(8) {{ width: 6%; }}  /* イベントID */
-    table col:nth-child(9) {{ width: 6%; }}  /* ルームID */
     
     /* 修正: background-colorプロパティを正しく適用 */
     tr.end_today{{background-color:{end_today_color_code};}} /* 終了日時当日ハイライト */
