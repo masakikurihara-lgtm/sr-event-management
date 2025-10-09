@@ -1095,6 +1095,13 @@ else:
         on_click=toggle_sort_by_point, 
         key="sort_toggle_button"
     )
+
+    # ★★★ 修正箇所: ここに最新化ボタンを追加 ★★★
+    st.button(
+        "🔄 開催中イベントの最新化", 
+        key="librarian_refresh_button"
+    )
+    # ★★★ 修正箇所ここまで ★★★    
     
     st.markdown(make_html_table_user(df_show, room_id), unsafe_allow_html=True)
     st.caption("黄色行は現在開催中（終了日時が未来）のイベントです。")
