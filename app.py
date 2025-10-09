@@ -343,7 +343,7 @@ if is_admin:
             time.sleep(0.1) # API負荷軽減
         
         st.session_state.refresh_trigger = False
-        # st.toast("開催中イベントの最新化が完了しました。", icon="✅") # ← 削除 (ユーザー要望)
+        # st.toast("終了前イベントの最新化が完了しました。", icon="✅") # ← 削除 (ユーザー要望)
         
         # ★★★ 修正: st.session_state.df_all の更新を反映するため、df を再作成 ★★★
         df_all = st.session_state.df_all.copy()
@@ -822,7 +822,7 @@ if is_admin:
         
                 # 1. 最新化ボタン
         st.button(
-            "🔄 開催中イベントの最新化", 
+            "🔄 終了前イベントの最新化", 
             on_click=refresh_data, 
             key="admin_refresh_button"
         )
@@ -1174,13 +1174,13 @@ else:
 
     # ★★★ 修正箇所: ここに最新化ボタンを追加 ★★★
     st.button(
-        "🔄 開催中イベントの最新化", 
+        "🔄 終了前イベントの最新化", 
         key="librarian_refresh_button"
     )
     # ★★★ 修正箇所ここまで ★★★    
     
     st.markdown(make_html_table_user(df_show, room_id), unsafe_allow_html=True)
-    st.caption("2023年9月以降に開始された参加イベントを表示しています。黄色ハイライト行は現在開催中（終了日時が未来）のイベントです。※ハイライトはイベント終了後、1時間後に消えます。")
+    st.caption("2023年9月以降に開始された参加イベントを表示しています。黄色ハイライト行は終了前のイベントです。※ハイライトはイベント終了後、1時間後に消えます。")
 
     # CSV出力
     cols_to_drop = [c for c in ["is_ongoing", "__highlight_style", "URL", "ルームID"] if c in df_show.columns]
