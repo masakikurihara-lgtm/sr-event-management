@@ -802,9 +802,14 @@ if is_admin:
     # 6. ソート (終了日時が新しいものが上)
     df_filtered.sort_values("__end_ts", ascending=False, na_position='last', inplace=True)
     
-    # 7. 表示整形
-    disp_cols = ["ライバー名", "イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル"]
-    df_show = df_filtered[disp_cols + ["is_ongoing", "is_end_today", "URL", "ルームID", "__display_liver_name"]].copy()
+    # 7. 表示整形（イベントID・ルームIDを末尾に追加）
+    disp_cols = ["ライバー名", "イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "event_id", "ルームID"]
+
+    # event_id が存在しない場合の防御
+    if "event_id" not in df_filtered.columns:
+        df_filtered["event_id"] = ""
+
+    df_show = df_filtered[disp_cols + ["is_ongoing", "is_end_today", "URL", "__display_liver_name"]].copy()
 
     if df_show.empty:
         st.warning("フィルタリング条件に合うデータが見つかりません。")
@@ -1000,6 +1005,8 @@ def make_html_table_admin(df):
     table col:nth-child(5) {{ width: 6%; }}  /* 順位 */
     table col:nth-child(6) {{ width: 12%; }} /* ポイント */
     table col:nth-child(7) {{ width: 6%; }}  /* レベル */
+    table col:nth-child(8) {{ width: 6%; }}  /* イベントID */
+    table col:nth-child(9) {{ width: 6%; }}  /* ルームID */
     
     /* 修正: background-colorプロパティを正しく適用 */
     tr.end_today{{background-color:{end_today_color_code};}} /* 終了日時当日ハイライト */
@@ -1028,10 +1035,10 @@ def make_html_table_admin(df):
     
     </style>
     <div class="scroll-table"><table>
-    <colgroup><col><col><col><col><col><col><col></colgroup>
+    <colgroup><col><col><col><col><col><col><col><col><col></colgroup>
     <thead><tr>
     <th>ライバー名</th><th>イベント名</th><th>開始日時</th><th>終了日時</th>
-    <th>順位</th><th>ポイント</th><th>レベル</th>
+    <th>順位</th><th>ポイント</th><th>レベル</th><th>イベントID</th><th>ルームID</th>
     </tr></thead><tbody>
     """
     for _, r in df.iterrows():
@@ -1059,6 +1066,7 @@ def make_html_table_admin(df):
         html += f'<tr class="{cls}">'
         html += f"<td>{liver_link}</td><td>{event_link}</td><td>{r['開始日時']}</td><td>{r['終了日時']}</td>"
         html += f"<td>{r['順位']}</td><td>{point}</td><td>{r['レベル']}</td>"
+        html += f"<td>{r.get('event_id', '')}</td><td>{r.get('ルームID', '')}</td>"  # ★ 追加行 ★
         html += "</tr>"
         
     html += "</tbody></table></div>"
