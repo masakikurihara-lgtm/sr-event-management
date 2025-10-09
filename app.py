@@ -567,96 +567,183 @@ if is_admin:
             # 全ルーム更新実行ボタン（既存）
             # ============================================================
             with run_col1:
-                if st.button("🔄 イベントDB更新開始（全ルーム対象）", key="run_db_update_all"):
-                    st.session_state["target_rooms"] = None  # ← 全ルーム対象
-                    st.session_state["update_mode"] = "all"
-                    st.rerun()
+                if st.button("🔄 イベントDB更新開始", key="run_db_update"):
+                    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-            # ============================================================
-            # 限定更新実行ボタン（追加）
-            # ============================================================
-            with run_col2:
-                if st.button("🎯 指定ルームのみ更新", key="run_db_update_target"):
-                    if not target_room_input.strip():
-                        st.warning("ルームIDを入力してください。")
+                    st.info("データ収集を開始します。")
+                    progress = st.progress(0)
+                    managed_rooms = pd.read_csv(ROOM_LIST_URL, dtype=str)
+
+                    # =========================================================
+                    # ✅ ③ 指定ルーム存在チェック
+                    # =========================================================
+                    target_room_input = st.text_input("🎯 更新対象ルームID（カンマ区切り・空欄なら全ルーム）", value="")
+                    target_room_ids = [r.strip() for r in target_room_input.split(",") if r.strip()]
+
+                    if target_room_ids:
+                        managed_ids = set(managed_rooms["ルームID"].astype(str))
+                        unknown = [rid for rid in target_room_ids if rid not in managed_ids]
+                        if unknown:
+                            st.warning(f"⚠️ 指定ルームIDが管理リストに存在しません: {', '.join(unknown)}")
+                        # 存在するIDのみ対象にする
+                        target_room_ids = [rid for rid in target_room_ids if rid in managed_ids]
+
+                    # =========================================================
+                    # イベントデータ取得ロジック
+                    # =========================================================
+                    def process_event(event_id):
+                        """イベント単位で room_list を処理"""
+                        recs = []
+                        entries = []
+                        page = 1
+                        found_target = False  # ✅ ② 対象ルームが見つかったらページ取得を打ち切る
+
+                        while True:
+                            data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": page})
+                            if not data or "list" not in data:
+                                break
+                            page_entries = data["list"]
+                            entries.extend(page_entries)
+
+                            # 指定ルームモードのとき → 対象ルームが見つかったら早期終了
+                            if target_room_ids:
+                                if any(str(e.get("room_id")) in target_room_ids for e in page_entries):
+                                    found_target = True
+                                    break
+
+                            if not data.get("next_page"):
+                                break
+                            page += 1
+                            time.sleep(0.03)
+
+                        if not entries:
+                            return []
+
+                        managed_ids = set(managed_rooms["ルームID"].astype(str))
+                        matched = [e for e in entries if str(e.get("room_id")) in managed_ids]
+
+                        # 指定ルームモードの場合 → そのルームのみ残す
+                        if target_room_ids:
+                            matched = [e for e in matched if str(e.get("room_id")) in target_room_ids]
+
+                        if not matched:
+                            return []
+
+                        # event情報取得
+                        detail = None
+                        for e in matched:
+                            rid = str(e.get("room_id"))
+                            data2 = http_get_json(API_CONTRIBUTION, params={"event_id": event_id, "room_id": rid})
+                            if data2 and "event" in data2:
+                                detail = data2["event"]
+                                break
+
+                        for e in matched:
+                            rid = str(e.get("room_id"))
+                            rank = e.get("rank") or e.get("position") or "-"
+                            point = e.get("point") or e.get("total_point") or 0
+                            quest = e.get("event_entry", {}).get("quest_level") if isinstance(e.get("event_entry"), dict) else e.get("quest_level") or 0
+                            recs.append({
+                                "PR対象": "",
+                                "ライバー名": e.get("room_name", ""),
+                                "アカウントID": e.get("account_id", ""),
+                                "イベント名": detail.get("event_name") if detail else "",
+                                "開始日時": fmt_time(detail.get("started_at")) if detail else "",
+                                "終了日時": fmt_time(detail.get("ended_at")) if detail else "",
+                                "順位": rank,
+                                "ポイント": point,
+                                "備考": "",
+                                "紐付け": "○",
+                                "URL": detail.get("event_url") if detail else "",
+                                "レベル": quest,
+                                "event_id": str(event_id),
+                                "ルームID": rid,
+                                "イベント画像（URL）": (detail.get("image") if detail else "")
+                            })
+                        return recs
+
+                    # =========================================================
+                    # 有効イベントのスキャン
+                    # =========================================================
+                    valid_ids = []
+                    for eid in range(int(start_id), int(end_id) + 1):
+                        data = http_get_json(API_ROOM_LIST, params={"event_id": eid, "p": 1})
+                        if data and ("list" in data and data["list"]):
+                            valid_ids.append(eid)
+                        time.sleep(0.03)
+
+                    # ✅ ④ イベント0件時の明示
+                    if not valid_ids:
+                        st.warning("📭 該当イベントが見つかりません。指定したイベントID範囲に対象イベントが存在しない可能性があります。")
+                        st.stop()
+
+                    # =========================================================
+                    # イベントごとの処理（並列）
+                    # =========================================================
+                    all_records = []
+                    total = len(valid_ids)
+                    done = 0
+                    with ThreadPoolExecutor(max_workers=int(max_workers)) as ex:
+                        futures = {ex.submit(process_event, eid): eid for eid in valid_ids}
+                        for fut in as_completed(futures):
+                            eid = futures[fut]
+                            try:
+                                recs = fut.result()
+                                all_records.extend(recs)
+                            except Exception as e:
+                                st.error(f"event_id={eid}: {e}")
+                            done += 1
+                            progress.progress(done / total)
+
+                    # =========================================================
+                    # 結果の統合と保存
+                    # =========================================================
+                    if not all_records:
+                        st.warning("📭 対象ルームの参加イベントが見つかりません。")
                     else:
-                        target_rooms = [r.strip() for r in target_room_input.split(",") if r.strip()]
-                        st.session_state["target_rooms"] = target_rooms
-                        st.session_state["update_mode"] = "target"
-                        st.rerun()
-
-            # ============================================================
-            # 実際の処理本体
-            # ============================================================
-            if "update_mode" in st.session_state:
-                mode = st.session_state.get("update_mode")
-                target_rooms = st.session_state.get("target_rooms")
-                st.info(f"データ収集を開始します。（モード: {mode}）")
-                progress = st.progress(0)
-
-                managed_rooms = pd.read_csv(ROOM_LIST_URL, dtype=str)
-                if mode == "target" and target_rooms:
-                    managed_rooms = managed_rooms[managed_rooms["ルームID"].astype(str).isin(target_rooms)]
-
-                valid_ids = []
-                for eid in range(int(start_id), int(end_id) + 1):
-                    data = http_get_json(API_ROOM_LIST, params={"event_id": eid, "p": 1})
-                    if data and ("list" in data and data["list"]):
-                        valid_ids.append(eid)
-                    time.sleep(0.03)
-
-                all_records = []
-                total = len(valid_ids)
-                done = 0
-                with concurrent.futures.ThreadPoolExecutor(max_workers=int(max_workers)) as ex:
-                    futures = {ex.submit(process_event, eid, target_rooms if mode == "target" else None): eid for eid in valid_ids}
-                    for fut in concurrent.futures.as_completed(futures):
-                        eid = futures[fut]
+                        df_new = pd.DataFrame(all_records)
                         try:
-                            recs = fut.result()
-                            all_records.extend(recs)
+                            existing_df = load_event_db(EVENT_DB_URL)
+                        except Exception:
+                            existing_df = pd.DataFrame()
+
+                        merged_df = existing_df.copy()
+                        merged_df["event_id"] = merged_df["event_id"].astype(str)
+                        merged_df["ルームID"] = merged_df["ルームID"].astype(str)
+                        df_new["event_id"] = df_new["event_id"].astype(str)
+                        df_new["ルームID"] = df_new["ルームID"].astype(str)
+
+                        updated_rows = 0
+                        added_rows = 0
+
+                        for _, new_row in df_new.iterrows():
+                            eid = str(new_row["event_id"])
+                            rid = str(new_row["ルームID"])
+                            mask = (merged_df["event_id"] == eid) & (merged_df["ルームID"] == rid)
+
+                            if mask.any():
+                                idx = mask.idxmax()
+                                for col in ["順位", "ポイント", "レベル", "イベント名", "開始日時", "終了日時", "URL"]:
+                                    merged_df.at[idx, col] = new_row.get(col, merged_df.at[idx, col])
+                                updated_rows += 1
+                            else:
+                                merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
+                                added_rows += 1
+
+                        # ソート
+                        merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
+                        merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
+                        merged_df.drop(columns=["event_id_num"], inplace=True)
+
+                        # 保存
+                        csv_bytes = merged_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+                        try:
+                            ftp_upload_bytes(ftp_path, csv_bytes)
+                            st.success(f"✅ 更新完了: 更新 {updated_rows}件 / 新規追加 {added_rows}件 / 合計 {len(merged_df)} 件を保存しました。")
                         except Exception as e:
-                            st.error(f"event_id={eid}: {e}")
-                        done += 1
-                        progress.progress(done / total)
+                            st.warning(f"FTPアップロード失敗: {e}")
+                            st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_database.csv")
 
-                if not all_records:
-                    st.warning("収集結果は空です。")
-                else:
-                    df_new = pd.DataFrame(all_records)
-                    try:
-                        existing_df = load_event_db(EVENT_DB_URL)
-                    except Exception:
-                        existing_df = pd.DataFrame()
-
-                    merged_df = existing_df.copy()
-                    merged_df["event_id"] = merged_df["event_id"].astype(str)
-                    merged_df["ルームID"] = merged_df["ルームID"].astype(str)
-                    df_new["event_id"] = df_new["event_id"].astype(str)
-                    df_new["ルームID"] = df_new["ルームID"].astype(str)
-
-                    for _, new_row in df_new.iterrows():
-                        eid = str(new_row["event_id"])
-                        rid = str(new_row["ルームID"])
-                        mask = (merged_df["event_id"] == eid) & (merged_df["ルームID"] == rid)
-                        if mask.any():
-                            idx = mask.idxmax()
-                            for col in ["順位", "ポイント", "レベル", "イベント名", "開始日時", "終了日時", "URL"]:
-                                merged_df.at[idx, col] = new_row.get(col, merged_df.at[idx, col])
-                        else:
-                            merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
-
-                    merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
-                    merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
-                    merged_df.drop(columns=["event_id_num"], inplace=True)
-
-                    csv_bytes = merged_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-                    try:
-                        ftp_upload_bytes(ftp_path, csv_bytes)
-                        st.success(f"✅ 更新完了: {len(merged_df)} 件を保存しました。")
-                    except Exception as e:
-                        st.warning(f"FTPアップロード失敗: {e}")
-                        st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_database.csv")
 
 
 
