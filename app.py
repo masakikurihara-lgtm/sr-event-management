@@ -206,6 +206,7 @@ def toggle_sort_by_point():
 
 def trigger_show_data():
     """「表示する」ボタンが押されたときのコールバック関数"""
+    st.session_state.room_input_value = st.session_state.room_id_input
     st.session_state.show_data = True
 
 def save_room_id():
@@ -271,8 +272,8 @@ st.text_input(
     "表示するルームIDを入力してください:", 
     value=st.session_state.room_input_value, 
     key="room_id_input",
-    type="password",
-    on_change=save_room_id
+    type="password"
+    #on_change=save_room_id
 )
 
 if st.button("表示する", on_click=trigger_show_data, key="show_data_button"):
