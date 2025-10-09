@@ -982,29 +982,51 @@ elif room_id != "":
 # HTMLテーブル生成関数 (ライバーモード用 - 修正なし)
 # ----------------------------------------------------------------------
 def make_html_table_user(df, room_id):
-    """ライバー用HTMLテーブルを生成（貢献ランクボタン風リンクあり、ポイントハイライトあり、開催中黄色ハイライト）"""
     html = """
     <style>
-    .scroll-table {
-    max-height: 520px;
-    overflow-y: auto;
-    overflow-x: auto;      /* 👈 横スクロールを許可 */
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    text-align: center;
-    width: 100%;
-    -webkit-overflow-scrolling: touch; /* 👈 iPhoneなどの慣性スクロール対応 */
+    .scroll-wrapper {
+        width: 100%;
+        overflow-x: auto !important;   /* ← 横スクロールを強制 */
+        -webkit-overflow-scrolling: touch;
     }
-    table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
-    thead th { position: sticky; top: 0; background: #0b66c2; color: #fff; padding: 5px; text-align: center; border: 1px solid #0b66c2; z-index: 10; }
-    tbody td { padding: 5px; border-bottom: 1px solid #f2f2f2; text-align: center; vertical-align: middle; word-wrap: break-word; }
-    table col:nth-child(1) { width: 46%; } table col:nth-child(2) { width: 11%; } table col:nth-child(3) { width: 11%; } 
-    table col:nth-child(4) { width: 6%; } table col:nth-child(5) { width: 9%; } table col:nth-child(6) { width: 6%; } 
-    table col:nth-child(7) { width: 11%; } 
-    tr.ongoing{background:#fff8b3;}
-    a.evlink{color:#0b57d0;text-decoration:underline;}
-    .rank-btn-link { background:#0b57d0; color:white !important; border:none; padding:4px 6px; border-radius:4px; cursor:pointer; text-decoration:none; display: inline-block; font-size: 12px; }
-    
+    .scroll-table {
+        min-width: 800px;              /* ← 横幅を固定（超えるとスクロール） */
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        text-align: center;
+        border-collapse: collapse;
+        font-size: 14px;
+    }
+    thead th {
+        position: sticky;
+        top: 0;
+        background: #0b66c2;
+        color: #fff;
+        padding: 5px;
+        text-align: center;
+        border: 1px solid #0b66c2;
+        z-index: 10;
+    }
+    tbody td {
+        padding: 5px;
+        border-bottom: 1px solid #f2f2f2;
+        text-align: center;
+        vertical-align: middle;
+        word-wrap: break-word;
+    }
+    tr.ongoing { background:#fff8b3; }
+    a.evlink { color:#0b57d0; text-decoration:underline; }
+    .rank-btn-link {
+        background:#0b57d0;
+        color:white !important;
+        border:none;
+        padding:4px 6px;
+        border-radius:4px;
+        cursor:pointer;
+        text-decoration:none;
+        display: inline-block;
+        font-size: 12px;
+    }
     table tbody td:nth-child(1) {
         text-align: left;
         white-space: nowrap;
@@ -1020,42 +1042,42 @@ def make_html_table_user(df, room_id):
         overflow: hidden;
         text-overflow: ellipsis;
     }
+
+    @media (max-width: 768px) {
+        .scroll-table {
+            font-size: 12px;
+            min-width: 600px; /* ← モバイル時は少し縮小 */
+        }
+    }
     </style>
-    <div class="scroll-table"><table>
-    <colgroup><col><col><col><col><col><col><col></colgroup>
-    <thead><tr>
-    <th>イベント名</th><th>開始日時</th><th>終了日時</th>
-    <th>順位</th><th>ポイント</th><th>レベル</th><th>貢献ランク</th>
-    </tr></thead><tbody>
+
+    <div class="scroll-wrapper">
+        <table class="scroll-table">
+        <colgroup><col><col><col><col><col><col><col></colgroup>
+        <thead><tr>
+        <th>イベント名</th><th>開始日時</th><th>終了日時</th>
+        <th>順位</th><th>ポイント</th><th>レベル</th><th>貢献ランク</th>
+        </tr></thead><tbody>
     """
     for _, r in df.iterrows():
         cls = "ongoing" if r.get("is_ongoing") else ""
         url_value = r.get("URL")
         url = url_value if pd.notna(url_value) and url_value else ""
         name = r.get("イベント名") or ""
-        
         point_raw = r.get('ポイント')
         point = f"{float(point_raw):,.0f}" if pd.notna(point_raw) and str(point_raw) not in ('-', '') else str(point_raw or '')
-        
         event_link = f'<a class="evlink" href="{url}" target="_blank">{name}</a>' if url else name
         contrib_url = generate_contribution_url(url, room_id)
-        
-        if contrib_url:
-            button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">貢献ランクを確認</a>'
-        else:
-            button_html = "<span>URLなし</span>"
-
+        button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">貢献ランクを確認</a>' if contrib_url else "<span>URLなし</span>"
         highlight_style = r.get('__highlight_style', '')
         point_td = f"<td style=\"{highlight_style}\">{point}</td>"
-
-
         html += f'<tr class="{cls}">'
         html += f"<td>{event_link}</td><td>{r['開始日時']}</td><td>{r['終了日時']}</td>"
         html += f"<td>{r['順位']}</td>{point_td}<td>{r['レベル']}</td><td>{button_html}</td>"
         html += "</tr>"
-        
     html += "</tbody></table></div>"
     return html
+
 
 # ----------------------------------------------------------------------
 # HTMLテーブル生成関数 (管理者モード用 - 修正なし)
