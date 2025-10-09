@@ -570,7 +570,7 @@ if is_admin:
                 if st.button("🔄 イベントDB更新開始（全ルーム対象）", key="run_db_update_all"):
                     st.session_state["target_rooms"] = None  # ← 全ルーム対象
                     st.session_state["update_mode"] = "all"
-                    st.experimental_rerun()
+                    st.rerun()
 
             # ============================================================
             # 限定更新実行ボタン（追加）
@@ -583,7 +583,7 @@ if is_admin:
                         target_rooms = [r.strip() for r in target_room_input.split(",") if r.strip()]
                         st.session_state["target_rooms"] = target_rooms
                         st.session_state["update_mode"] = "target"
-                        st.experimental_rerun()
+                        st.rerun()
 
             # ============================================================
             # 実際の処理本体
