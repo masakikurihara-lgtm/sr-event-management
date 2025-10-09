@@ -499,10 +499,10 @@ if is_admin:
             st.markdown("---")
             st.markdown("#### 🚀 データベース更新実行")
 
-            start_id = st.number_input("スキャン開始イベントID", min_value=1, value=40290, step=1)
-            end_id = st.number_input("スキャン終了イベントID", min_value=start_id, value=start_id + 10, step=1)
+            start_id = st.number_input("スキャン開始イベントID", min_value=1, value=40000, step=1)
+            end_id = st.number_input("スキャン終了イベントID", min_value=start_id, value=start_id + 250, step=1)
             max_workers = st.number_input("並列処理数", min_value=1, max_value=30, value=3)
-            save_interval = st.number_input("途中保存間隔（件）", min_value=50, value=200, step=50)
+            save_interval = st.number_input("途中保存間隔（件）", min_value=50, value=300, step=50)
             ftp_path = st.text_input("FTP保存パス", value="/mksoul-pro.com/showroom/file/event_database.csv")
 
             # ------------------------------------------------------------
