@@ -365,24 +365,8 @@ if is_admin:
             on_change=toggle_full_data
         )
 
-        st.markdown("---") # 区切り線
 
-        # 3. 終了日時フィルタリング
-        selected_end_date = st.selectbox(
-            "終了日時で絞り込み",
-            options=["全期間"] + unique_end_dates,
-            key='admin_end_date_filter',
-        )
 
-        # 4. 開始日時フィルタリング
-        selected_start_date = st.selectbox(
-            "開始日時で絞り込み",
-            options=["全期間"] + unique_start_dates,
-            key='admin_start_date_filter',
-        )
-        
-        
-        
         # ============================================================
         # 🧭 管理者専用：イベントDB更新機能（既存履歴ビューアと独立動作）
         # ============================================================
@@ -764,7 +748,25 @@ if is_admin:
 
 
 
-                        
+
+        st.markdown("---") # 区切り線
+
+        # 3. 終了日時フィルタリング
+        selected_end_date = st.selectbox(
+            "終了日時で絞り込み",
+            options=["全期間"] + unique_end_dates,
+            key='admin_end_date_filter',
+        )
+
+        # 4. 開始日時フィルタリング
+        selected_start_date = st.selectbox(
+            "開始日時で絞り込み",
+            options=["全期間"] + unique_start_dates,
+            key='admin_start_date_filter',
+        )
+        
+        
+                                
     # 4. プルダウンフィルタの適用
     if selected_end_date != "全期間":
         df_filtered = df_filtered[df_filtered["終了日時"].str.startswith(selected_end_date)].copy()
