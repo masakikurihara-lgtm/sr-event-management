@@ -748,7 +748,30 @@ if is_admin:
 
                     updated_rows = 0
                     added_rows = 0
+                    deleted_rows = 0   # 👈 ★追加：削除件数カウンタ
 
+                    # =========================================================
+                    # 🧹 追加：API上に存在しないレコードの削除
+                    # =========================================================
+                    # 今回スキャンした範囲内の event_id が対象
+                    scanned_event_ids = set(map(str, valid_ids))
+
+                    # DB内でスキャン範囲に該当する行を対象
+                    before_count = len(merged_df)
+                    merged_df = merged_df[
+                        ~(
+                            (merged_df["event_id"].isin(scanned_event_ids)) &
+                            ~merged_df[["event_id", "ルームID"]].apply(tuple, axis=1).isin(
+                                df_new[["event_id", "ルームID"]].apply(tuple, axis=1)
+                            )
+                        )
+                    ]
+                    deleted_rows = before_count - len(merged_df)
+                    # =========================================================
+
+                    # =========================================================
+                    # 更新・追加処理（既存ロジック）
+                    # =========================================================
                     for _, new_row in df_new.iterrows():
                         eid = str(new_row["event_id"])
                         rid = str(new_row["ルームID"])
@@ -763,20 +786,19 @@ if is_admin:
                             merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
                             added_rows += 1
 
-                    # ソート
+                    # ソート処理（既存）
                     merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
                     merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
                     merged_df.drop(columns=["event_id_num"], inplace=True)
 
-                    # 保存
+                    # 保存処理（既存）
                     csv_bytes = merged_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
                     try:
                         ftp_upload_bytes(ftp_path, csv_bytes)
-                        st.success(f"✅ 更新完了: 更新 {updated_rows}件 / 新規追加 {added_rows}件 / 合計 {len(merged_df)} 件を保存しました。")
+                        st.success(f"✅ 更新完了: 更新 {updated_rows}件 / 新規追加 {added_rows}件 / 削除 {deleted_rows}件 / 合計 {len(merged_df)} 件を保存しました。")
                     except Exception as e:
                         st.warning(f"FTPアップロード失敗: {e}")
                         st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_database.csv")
-
 
 
 
