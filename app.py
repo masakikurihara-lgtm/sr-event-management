@@ -867,10 +867,10 @@ if is_admin:
     # -------------------------------------------------------------------
 
 
-    # 6. ソート (終了日時が新しいものが上)
+    # 6. ソート (終了日時、イベントIDが新しいものが上)
     df_filtered.sort_values(
-        ["__end_ts", "event_id", "__point_num"],  # ソートしたい列を優先順位の高い順にリストで指定
-        ascending=[False, False, False],  # 各列のソート順を指定（どちらも降順なのでFalse）
+        ["__end_ts", "event_id"],  # ソートしたい列を優先順位の高い順にリストで指定
+        ascending=[False, False],  # 各列のソート順を指定（どちらも降順なのでFalse）
         na_position='last',
         inplace=True
     )
