@@ -1041,13 +1041,10 @@ def make_html_table_user(df, room_id):
         event_link = f'<a class="evlink" href="{url}" target="_blank">{name}</a>' if url else name
         contrib_url = generate_contribution_url(url, room_id)
         
-        # --- 修正: 別タブではなく同ページ内で展開 ---
-        button_key = f"show_contrib_{r.get('event_id')}_{room_id}"
-        if st.button("貢献ランク", key=button_key):
-            with st.spinner("貢献ランクを取得中..."):
-                display_contribution_ranking(r.get("event_id"), room_id)
-        button_html = ""  # ボタンはStreamlitで生成するためHTML側には出さない
-
+        if contrib_url:
+            button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">貢献ランク</a>'
+        else:
+            button_html = "<span>URLなし</span>"
 
         highlight_style = r.get('__highlight_style', '')
         point_td = f"<td style=\"{highlight_style}\">{point}</td>"
@@ -1058,67 +1055,8 @@ def make_html_table_user(df, room_id):
         html += f"<td>{r['順位']}</td>{point_td}<td>{r['レベル']}</td><td>{button_html}</td>"
         html += "</tr>"
         
-        # ▼▼ ここから追加 ▼▼
-        # 各イベントの下に貢献ランクエリアを設ける（Streamlit要素を分離）
-        st.markdown("---")
-        button_key = f"show_contrib_{r.get('event_id')}_{room_id}"
-        if st.button(f"🎁 {r['イベント名']} の貢献ランクを表示", key=button_key):
-            with st.spinner("貢献ランクを取得中..."):
-                display_contribution_ranking(r.get("event_id"), room_id)
-        # ▲▲ ここまで追加 ▲▲
-
-        
     html += "</tbody></table></div>"
     return html
-
-
-# ----------------------------------------------------------------------
-# ★★★ 新規追加: 貢献ランク情報の取得＆表示 ★★★
-# ----------------------------------------------------------------------
-def display_contribution_ranking(event_id, room_id):
-    """イベントの貢献ランキングを下段に展開表示（テーブル＋CSVダウンロード）"""
-    api_url = "https://www.showroom-live.com/api/event/contribution_ranking"
-    data = http_get_json(api_url, params={"event_id": event_id, "room_id": room_id})
-
-    if not data or "ranking" not in data:
-        st.info("貢献ランク情報が取得できませんでした。")
-        return
-
-    ranking_list = data.get("ranking", [])
-    if not ranking_list:
-        st.info("貢献者がまだいません。")
-        return
-
-    # DataFrame化
-    df_contrib = pd.DataFrame(ranking_list)
-    df_contrib = df_contrib[["rank", "name", "point"]]
-    df_contrib.rename(columns={
-        "rank": "順位",
-        "name": "貢献ユーザー",
-        "point": "支援ポイント"
-    }, inplace=True)
-    df_contrib["支援ポイント"] = df_contrib["支援ポイント"].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "")
-
-    # 表示（横スクロール対応）
-    st.markdown("##### 🩵 貢献ランキング")
-    st.markdown(
-        "<div style='overflow-x:auto; border:1px solid #ddd; border-radius:6px;'>"
-        + df_contrib.to_html(index=False, escape=False, justify="center")
-        + "</div>",
-        unsafe_allow_html=True
-    )
-
-    # CSVダウンロード
-    csv_bytes = df_contrib.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-    st.download_button(
-        label="📥 貢献ランクCSVダウンロード",
-        data=csv_bytes,
-        file_name=f"contribution_{event_id}_{room_id}.csv",
-        mime="text/csv",
-        key=f"contrib_csv_{event_id}_{room_id}"
-    )
-
-
 
 # ----------------------------------------------------------------------
 # HTMLテーブル生成関数 (管理者モード用 - 修正なし)
