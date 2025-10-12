@@ -1042,13 +1042,12 @@ def make_html_table_user(df, room_id):
         contrib_url = generate_contribution_url(url, room_id)
         
         if contrib_url:
-            # Streamlitボタンとして動作させる
-            btn_key = f"show_contrib_{r.get('event_id')}_{room_id}"
-            if st.button(f"貢献ランク（{r.get('イベント名')}）", key=btn_key):
-                st.session_state["selected_contrib_event"] = r.get("event_id")
-                st.session_state["selected_contrib_room"] = room_id
+            btn_key = f"contrib_{r.get('event_id')}_{room_id}"
+            st.session_state[f"contrib_event_{btn_key}"] = contrib_url
+            button_html = f'<a href="?show_contrib={btn_key}" class="rank-btn-link">貢献ランク</a>'
         else:
-            st.write("URLなし")
+            button_html = "<span>URLなし</span>"
+
 
         highlight_style = r.get('__highlight_style', '')
         point_td = f"<td style=\"{highlight_style}\">{point}</td>"
@@ -1197,16 +1196,17 @@ else:
     st.caption("2023年9月以降に開始された参加イベントを表示しています。黄色ハイライト行は終了前のイベントです。※ハイライトはイベント終了後、1時間後に消えます。")
     
     # ============================================================
-    # 🎁 貢献ランクボタン設置セクション
+    # 🎁 「貢献ランク」クリック時の処理
     # ============================================================
-    st.markdown("### 💎 貢献ランキング表示")
+    import urllib.parse
 
-    selected_event_id = st.text_input("イベントIDを入力してください（上のテーブルの event_id）", "")
-    if st.button("貢献ランクを表示"):
-        if selected_event_id.strip().isdigit():
-            show_contribution_table(int(selected_event_id), room_id)
-        else:
-            st.warning("正しいイベントIDを入力してください。")
+    query_params = st.query_params
+    if "show_contrib" in query_params:
+        key = query_params["show_contrib"]
+        contrib_url = st.session_state.get(f"contrib_event_{key}")
+        if contrib_url:
+            show_contribution_table(contrib_url, room_id)
+
 
 
     # CSV出力
@@ -1216,13 +1216,20 @@ else:
 
 
 # ============================================================
-# 🎁 貢献ランキング取得・表示関数
+# 🎁 貢献ランキング表示用関数
 # ============================================================
-def show_contribution_table(event_id, room_id):
-    """指定イベントとルームの貢献ランキングをAPIから取得して表示"""
+def show_contribution_table(event_url, room_id):
+    """イベントURLとルームIDから貢献ランキングを取得して表示"""
+    import re
+    match = re.search(r'/event/([^/]+)/?$', event_url)
+    if not match:
+        st.warning("イベントURLが無効です。")
+        return
+    url_key = match.group(1)
+
     api_url = "https://www.showroom-live.com/api/event/contribution_ranking"
     try:
-        res = requests.get(api_url, params={"event_id": event_id, "room_id": room_id}, timeout=10)
+        res = requests.get(api_url, params={"event_id": None, "room_id": room_id})
         res.raise_for_status()
         data = res.json()
     except Exception as e:
@@ -1231,7 +1238,7 @@ def show_contribution_table(event_id, room_id):
 
     ranking = data.get("ranking") or []
     if not ranking:
-        st.info("貢献ランキングデータがありません。")
+        st.info("貢献ランキング情報がありません。")
         return
 
     import pandas as pd
@@ -1240,5 +1247,5 @@ def show_contribution_table(event_id, room_id):
     df["ポイント"] = df["ポイント"].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "")
 
     st.markdown("---")
-    st.markdown(f"### 🎁 貢献ランキング（event_id={event_id}, room_id={room_id}）")
+    st.markdown(f"### 🎁 貢献ランキング（{url_key}）")
     st.dataframe(df, hide_index=True, use_container_width=True)
