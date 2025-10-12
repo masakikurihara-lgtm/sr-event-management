@@ -1197,12 +1197,17 @@ else:
     st.caption("2023年9月以降に開始された参加イベントを表示しています。黄色ハイライト行は終了前のイベントです。※ハイライトはイベント終了後、1時間後に消えます。")
     
     # ============================================================
-    # 🎁 「貢献ランク」ボタンクリック時にランキングを表示
+    # 🎁 貢献ランクボタン設置セクション
     # ============================================================
-    if "selected_contrib_event" in st.session_state and "selected_contrib_room" in st.session_state:
-        event_id = st.session_state["selected_contrib_event"]
-        room_id = st.session_state["selected_contrib_room"]
-        show_contribution_table(event_id, room_id)
+    st.markdown("### 💎 貢献ランキング表示")
+
+    selected_event_id = st.text_input("イベントIDを入力してください（上のテーブルの event_id）", "")
+    if st.button("貢献ランクを表示"):
+        if selected_event_id.strip().isdigit():
+            show_contribution_table(int(selected_event_id), room_id)
+        else:
+            st.warning("正しいイベントIDを入力してください。")
+
 
     # CSV出力
     cols_to_drop = [c for c in ["is_ongoing", "__highlight_style", "URL", "ルームID"] if c in df_show.columns]
@@ -1211,22 +1216,22 @@ else:
 
 
 # ============================================================
-# 🎁 貢献ランキングテーブル表示関数（ライバーモード用）
+# 🎁 貢献ランキング取得・表示関数
 # ============================================================
 def show_contribution_table(event_id, room_id):
-    """指定イベント・ルームの貢献ランキングをAPIから取得して表示"""
+    """指定イベントとルームの貢献ランキングをAPIから取得して表示"""
     api_url = "https://www.showroom-live.com/api/event/contribution_ranking"
     try:
         res = requests.get(api_url, params={"event_id": event_id, "room_id": room_id}, timeout=10)
         res.raise_for_status()
         data = res.json()
     except Exception as e:
-        st.error(f"API取得に失敗しました: {e}")
+        st.error(f"API取得失敗: {e}")
         return
 
-    ranking = data.get("ranking", [])
+    ranking = data.get("ranking") or []
     if not ranking:
-        st.info("貢献ランキングが取得できませんでした。")
+        st.info("貢献ランキングデータがありません。")
         return
 
     import pandas as pd
