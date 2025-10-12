@@ -1042,9 +1042,13 @@ def make_html_table_user(df, room_id):
         contrib_url = generate_contribution_url(url, room_id)
         
         if contrib_url:
-            button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">貢献ランク</a>'
+            # Streamlitボタンとして動作させる
+            btn_key = f"show_contrib_{r.get('event_id')}_{room_id}"
+            if st.button(f"貢献ランク（{r.get('イベント名')}）", key=btn_key):
+                st.session_state["selected_contrib_event"] = r.get("event_id")
+                st.session_state["selected_contrib_room"] = room_id
         else:
-            button_html = "<span>URLなし</span>"
+            st.write("URLなし")
 
         highlight_style = r.get('__highlight_style', '')
         point_td = f"<td style=\"{highlight_style}\">{point}</td>"
@@ -1191,8 +1195,45 @@ else:
     
     st.markdown(make_html_table_user(df_show, room_id), unsafe_allow_html=True)
     st.caption("2023年9月以降に開始された参加イベントを表示しています。黄色ハイライト行は終了前のイベントです。※ハイライトはイベント終了後、1時間後に消えます。")
+    
+    # ============================================================
+    # 🎁 「貢献ランク」ボタンクリック時にランキングを表示
+    # ============================================================
+    if "selected_contrib_event" in st.session_state and "selected_contrib_room" in st.session_state:
+        event_id = st.session_state["selected_contrib_event"]
+        room_id = st.session_state["selected_contrib_room"]
+        show_contribution_table(event_id, room_id)
 
     # CSV出力
     cols_to_drop = [c for c in ["is_ongoing", "__highlight_style", "URL", "ルームID"] if c in df_show.columns]
     csv_bytes = df_show.drop(columns=cols_to_drop).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
     st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_history.csv", key="user_csv_download")
+
+
+# ============================================================
+# 🎁 貢献ランキングテーブル表示関数（ライバーモード用）
+# ============================================================
+def show_contribution_table(event_id, room_id):
+    """指定イベント・ルームの貢献ランキングをAPIから取得して表示"""
+    api_url = "https://www.showroom-live.com/api/event/contribution_ranking"
+    try:
+        res = requests.get(api_url, params={"event_id": event_id, "room_id": room_id}, timeout=10)
+        res.raise_for_status()
+        data = res.json()
+    except Exception as e:
+        st.error(f"API取得に失敗しました: {e}")
+        return
+
+    ranking = data.get("ranking", [])
+    if not ranking:
+        st.info("貢献ランキングが取得できませんでした。")
+        return
+
+    import pandas as pd
+    df = pd.DataFrame(ranking)[["rank", "name", "point"]]
+    df.rename(columns={"rank": "順位", "name": "ユーザー名", "point": "ポイント"}, inplace=True)
+    df["ポイント"] = df["ポイント"].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "")
+
+    st.markdown("---")
+    st.markdown(f"### 🎁 貢献ランキング（event_id={event_id}, room_id={room_id}）")
+    st.dataframe(df, hide_index=True, use_container_width=True)
