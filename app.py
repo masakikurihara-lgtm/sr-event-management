@@ -1042,7 +1042,7 @@ def make_html_table_user(df, room_id):
         contrib_url = generate_contribution_url(url, room_id)
         
         if contrib_url:
-            button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">貢献ランクを確認</a>'
+            button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">貢献ランク</a>'
         else:
             button_html = "<span>URLなし</span>"
 
