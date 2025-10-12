@@ -868,7 +868,7 @@ if is_admin:
 
 
     # 6. ソート (終了日時が新しいものが上)
-    df_filtered.sort_values("__end_ts", ascending=False, na_position='last', inplace=True)
+    df_filtered.sort_values("__end_ts", "event_id" ascending=False, na_position='last', inplace=True)
     
     # 7. 表示整形（イベントID・ルームIDを末尾に追加）
     disp_cols = ["ライバー名", "イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "event_id", "ルームID"]
