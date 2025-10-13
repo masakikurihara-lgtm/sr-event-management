@@ -214,34 +214,9 @@ def save_room_id():
     st.session_state.room_input_value = st.session_state.room_id_input
 
 def refresh_data():
-    """終了前イベントの最新化を即時実行（ページ全体再実行はしない）"""
-    if "df_all" not in st.session_state or st.session_state.df_all.empty:
-        return
-
-    df_all = st.session_state.df_all.copy()
-    now_ts = int(datetime.now(JST).timestamp())
-
-    ongoing = df_all[df_all["終了日時"].apply(parse_to_ts).apply(lambda x: pd.notna(x) and x > now_ts - 3600)]
-
-    if ongoing.empty:
-        st.info("現在、開催中イベントはありません。")
-        return
-
-    with st.spinner("開催中イベントの順位/ポイントを最新化中..."):
-        for idx, row in ongoing.iterrows():
-            event_id = row.get("event_id")
-            room_id = row.get("ルームID")
-            stats = get_event_stats_from_roomlist(event_id, room_id)
-            if stats:
-                df_all.at[idx, "順位"] = stats.get("rank") or "-"
-                df_all.at[idx, "ポイント"] = stats.get("point") or 0
-                df_all.at[idx, "レベル"] = stats.get("quest_level") or 0
-            time.sleep(0.1)
-
-    # 更新した内容をセッションに保存
-    st.session_state.df_all = df_all
-    st.success("終了前イベントを最新化しました。")
-
+    """最新化ボタンのコールバック"""
+    st.session_state.refresh_trigger = True
+    st.session_state.show_data = True # 最新化も表示トリガーとする
 
 def toggle_full_data():
     """
