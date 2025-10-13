@@ -293,11 +293,16 @@ if not do_show:
 # ----------------------------------------------------------------------
 # データ取得
 # ----------------------------------------------------------------------
-# 管理者モードは毎回CSVを再ロード（または最新化ボタン押下時）
-if 'df_all' not in st.session_state or is_admin or st.session_state.get('refresh_trigger', False):
-    # ライバーモードの挙動に合わせ、spinnerを削除
+
+# 🎯 常に最新CSVを取得する（セッションキャッシュを無効化）
+if st.session_state.get("refresh_trigger", False) or "df_all" not in st.session_state:
     df_all = load_event_db(EVENT_DB_URL)
-    st.session_state.df_all = df_all # セッションに保存
+    st.session_state.df_all = df_all
+    st.session_state.refresh_trigger = False
+else:
+    df_all = st.session_state.df_all.copy()
+
+
 
 if st.session_state.df_all.empty:
     st.stop()
@@ -318,7 +323,7 @@ if is_admin:
     df["終了日時"] = df["終了日時"].apply(fmt_time)
     df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
     df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
-
+    
     # 2. 開催中判定
     now_ts = int(datetime.now(JST).timestamp())
     today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
@@ -331,7 +336,7 @@ if is_admin:
     # ★★★ 修正 (5. 開催中イベント最新化) - 自動最新化/ボタン最新化をここで実行 ★★★
     if is_admin or st.session_state.get('refresh_trigger', False):
         ongoing = df[df["is_ongoing"]] # df (フィルタ前の全データ) を使用
-
+        
         # with st.spinner("開催中イベントの順位/ポイントを最新化中..."): # ← 削除 (ユーザー要望)
         for idx, row in ongoing.iterrows():
             event_id = row.get("event_id")
@@ -342,14 +347,14 @@ if is_admin:
                 st.session_state.df_all.at[idx, "ポイント"] = stats.get("point") or 0
                 st.session_state.df_all.at[idx, "レベル"] = stats.get("quest_level") or 0
             time.sleep(0.1) # API負荷軽減
-
+        
         st.session_state.refresh_trigger = False
         # st.toast("終了前イベントの最新化が完了しました。", icon="✅") # ← 削除 (ユーザー要望)
-
+        
         # ★★★ 修正: st.session_state.df_all の更新を反映するため、df を再作成 ★★★
         df_all = st.session_state.df_all.copy()
         df = df_all.copy()
-
+        
         # 再度フラグ/TSを付ける (必須)
         df["開始日時"] = df["開始日時"].apply(fmt_time)
         df["終了日時"] = df["終了日時"].apply(fmt_time)
@@ -387,7 +392,7 @@ if is_admin:
         list(set(df_filtered["終了日時"].apply(lambda x: x.split(' ')[0] if x else '')) - {''}), 
         reverse=True
     )
-
+    
     # 開始日時フィルタリング用の選択肢生成
     unique_start_dates = sorted(
         list(set(df_filtered["開始日時"].apply(lambda x: x.split(' ')[0] if x else '')) - {''}), 
@@ -397,7 +402,7 @@ if is_admin:
     # 3. UIコンポーネント (フィルタ、最新化ボタン)
     # ★★★ 修正: 横並びを廃止し、折りたためるセクション内で縦に配置する (レスポンシブ対応) ★★★
     with st.expander("⚙️ 個別機能・絞り込みオプション"):
-
+        
 
         # ============================================================
         # 🧭 管理者専用：イベントDB更新機能（既存履歴ビューアと独立動作）
@@ -820,7 +825,7 @@ if is_admin:
         )
 
         st.markdown("---") # 区切り線
-
+        
                 # 1. 最新化ボタン
         st.button(
             "🔄 終了前イベントの最新化", 
@@ -829,7 +834,7 @@ if is_admin:
         )
 
         st.markdown("---") # 区切り線
-
+        
         # 2. 全量表示トグル
         st.checkbox(
             "全量表示（期間フィルタ無効）", 
@@ -839,14 +844,14 @@ if is_admin:
         )
 
         st.markdown("") #空白行 
-
-
+        
+                                
     # 4. プルダウンフィルタの適用
     if selected_end_date != "全期間":
         df_filtered = df_filtered[df_filtered["終了日時"].str.startswith(selected_end_date)].copy()
     if selected_start_date != "全期間":
         df_filtered = df_filtered[df_filtered["開始日時"].str.startswith(selected_start_date)].copy()
-
+        
     # 4.5. ライバー名の最新化 (APIから取得し、キャッシュ)
     unique_room_ids = [rid for rid in df_filtered["ルームID"].unique() if rid and str(rid) != '']
     room_ids_to_fetch = [rid for rid in unique_room_ids if str(rid) not in st.session_state.room_name_cache]
@@ -867,9 +872,14 @@ if is_admin:
     # -------------------------------------------------------------------
 
 
-    # 6. ソート (終了日時が新しいものが上)
-    df_filtered.sort_values("__end_ts", ascending=False, na_position='last', inplace=True)
-
+    # 6. ソート (終了日時、イベントIDが新しいものが上)
+    df_filtered.sort_values(
+        ["__end_ts", "event_id"],  # ソートしたい列を優先順位の高い順にリストで指定
+        ascending=[False, False],  # 各列のソート順を指定（どちらも降順なのでFalse）
+        na_position='last',
+        inplace=True
+    )
+    
     # 7. 表示整形（イベントID・ルームIDを末尾に追加）
     disp_cols = ["ライバー名", "イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "event_id", "ルームID"]
 
@@ -882,27 +892,27 @@ if is_admin:
     if df_show.empty:
         st.warning("フィルタリング条件に合うデータが見つかりません。")
         st.stop()
-
+        
 elif room_id != "":
     # --- ライバーモードのデータ処理（既存ロジックを維持）---
-
+    
     # 1. フィルタリング (ルームID)
     df = df_all[df_all["ルームID"].astype(str) == str(room_id)].copy()
     if df.empty:
         room_name = get_room_name(room_id)
         st.warning(f"ルームID: {room_id} (ルーム名: {room_name}) のデータが見つかりません。")
         st.stop()
-
+        
     # 2. 日付整形とタイムスタンプ追加
     df["開始日時"] = df["開始日時"].apply(fmt_time)
     df["終了日時"] = df["終了日時"].apply(fmt_time)
     df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
     df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
     df = df.sort_values("__start_ts", ascending=False)
-
+    
     # 3. 2023年9月1日以降のイベントにフィルタリング
     df = df[df["__start_ts"] >= FILTER_START_TS].copy()
-
+    
     # 4. 開催中判定
     now_ts = int(datetime.now(JST).timestamp())
     # 修正前: df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
@@ -919,7 +929,7 @@ elif room_id != "":
             df.at[idx, "ポイント"] = stats.get("point") or 0
             df.at[idx, "レベル"] = stats.get("quest_level") or 0
         time.sleep(0.1)
-
+    
     # 6. ポイントランキングを計算し、ハイライトCSSを決定するロジック
     df['__point_num'] = pd.to_numeric(df['ポイント'], errors='coerce')
     df_valid_points = df.dropna(subset=['__point_num']).copy()
@@ -930,7 +940,7 @@ elif room_id != "":
             target_indices = df_valid_points[df_valid_points['__rank'] == rank].index
             if not target_indices.empty:
                 df.loc[target_indices, '__highlight_style'] = style
-
+    
     # 7. ソートの適用
     if st.session_state.sort_by_point:
         df.sort_values(
@@ -962,7 +972,7 @@ elif room_id != "":
     }
     </style>
     """, unsafe_allow_html=True)
-
+    
     room_name = get_room_name(room_id)
     link_url = f"https://www.showroom-live.com/room/profile?room_id={room_id}"
     label_html = f"""
@@ -1034,15 +1044,14 @@ def make_html_table_user(df, room_id):
         url_value = r.get("URL")
         url = url_value if pd.notna(url_value) and url_value else ""
         name = r.get("イベント名") or ""
-
+        
         point_raw = r.get('ポイント')
         point = f"{float(point_raw):,.0f}" if pd.notna(point_raw) and str(point_raw) not in ('-', '') else str(point_raw or '')
-
+        
         event_link = f'<a class="evlink" href="{url}" target="_blank">{name}</a>' if url else name
         contrib_url = generate_contribution_url(url, room_id)
-
+        
         if contrib_url:
-            button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">貢献ランクを確認</a>'
             button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">貢献ランク</a>'
         else:
             button_html = "<span>URLなし</span>"
@@ -1055,7 +1064,7 @@ def make_html_table_user(df, room_id):
         html += f"<td>{event_link}</td><td>{r['開始日時']}</td><td>{r['終了日時']}</td>"
         html += f"<td>{r['順位']}</td>{point_td}<td>{r['レベル']}</td><td>{button_html}</td>"
         html += "</tr>"
-
+        
     html += "</tbody></table></div>"
     return html
 
@@ -1064,10 +1073,10 @@ def make_html_table_user(df, room_id):
 # ----------------------------------------------------------------------
 def make_html_table_admin(df):
     """管理者用HTMLテーブルを生成（ライバー名列あり、ポイントハイライトなし、終了当日ハイライトあり）"""
-
+    
     # END_TODAY_HIGHLIGHTからカラーコードを抽出し、CSSの二重定義を回避
     end_today_color_code = END_TODAY_HIGHLIGHT.replace('background-color: ', '').replace(';', '')
-
+    
     # URL/貢献ランク列を削除した7列構成
     html = f"""
     <style>
@@ -1125,18 +1134,18 @@ def make_html_table_admin(df):
 
         url_value = r.get("URL")
         room_id_value = r.get("ルームID")
-
+        
         url = url_value if pd.notna(url_value) and url_value else ""
         room_id = room_id_value if pd.notna(room_id_value) and room_id_value else ""
 
         name = r.get("イベント名") or ""
         liver_name = r.get("__display_liver_name") or r.get("ライバー名") or ""
-
+        
         point_raw = r.get('ポイント')
         point = f"{float(point_raw):,.0f}" if pd.notna(point_raw) and str(point_raw) not in ('-', '') else str(point_raw or '')
-
+        
         event_link = f'<a class="evlink" href="{url}" target="_blank">{name}</a>' if url else name
-
+        
         # ライバー名リンク (別タブ)
         liver_link_url = f"https://www.showroom-live.com/room/profile?room_id={room_id}"
         liver_link = f'<a class="liver-link" href="{liver_link_url}" target="_blank">{liver_name}</a>' if room_id else liver_name
@@ -1146,7 +1155,7 @@ def make_html_table_admin(df):
         html += f"<td>{r['順位']}</td><td>{point}</td><td>{r['レベル']}</td>"
         html += f"<td>{r.get('event_id', '')}</td><td>{r.get('ルームID', '')}</td>"  # ★ 追加行 ★
         html += "</tr>"
-
+        
     html += "</tbody></table></div>"
     return html
 
@@ -1157,11 +1166,11 @@ def make_html_table_admin(df):
 if is_admin:
     # 管理者モードの表示
     st.markdown(make_html_table_admin(df_show), unsafe_allow_html=True)
-
+    
     end_today_color = END_TODAY_HIGHLIGHT.replace('background-color: ', '').replace(';', '')
     #st.caption(f"2023年9月以降に開始された参加イベントを表示しています。黄色行は開催中（終了日時が未来）のイベントです。赤っぽい行（{end_today_color}）は終了日時が本日のイベントです。")
     st.caption(f"")
-
+    
     # CSVダウンロード
     cols_to_drop = [c for c in ["is_ongoing", "is_end_today", "__point_num", "URL", "ルームID", "__display_liver_name"] if c in df_show.columns]
     csv_bytes = df_show.drop(columns=cols_to_drop).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
@@ -1169,7 +1178,7 @@ if is_admin:
 
 else:
     # ライバーモードの表示 (既存ロジック)
-
+    
     # ソートボタンの表示
     button_label = (
         "📅 デフォルト表示に戻す (開始日時降順)"
@@ -1186,13 +1195,15 @@ else:
     # ★★★ 修正箇所: ここに最新化ボタンを追加 ★★★
     st.button(
         "🔄 終了前イベントの最新化", 
+        on_click=refresh_data,  # ← 追加
         key="librarian_refresh_button"
     )
-    # ★★★ 修正箇所ここまで ★★★    
-
+    # ★★★ 修正箇所ここまで ★★★
+    
     st.markdown(make_html_table_user(df_show, room_id), unsafe_allow_html=True)
     st.caption("2023年9月以降に開始された参加イベントを表示しています。黄色ハイライト行は終了前のイベントです。※ハイライトはイベント終了後、1時間後に消えます。")
 
     # CSV出力
     cols_to_drop = [c for c in ["is_ongoing", "__highlight_style", "URL", "ルームID"] if c in df_show.columns]
     csv_bytes = df_show.drop(columns=cols_to_drop).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+    st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_history.csv", key="user_csv_download")
