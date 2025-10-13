@@ -216,6 +216,7 @@ def save_room_id():
 def refresh_data():
     """最新化ボタンのコールバック"""
     st.session_state.refresh_trigger = True
+    st.session_state.show_data = True # 最新化も表示トリガーとする
 
 def toggle_full_data():
     """
