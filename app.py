@@ -872,10 +872,13 @@ if is_admin:
     # -------------------------------------------------------------------
 
 
-    # 6. ソート (終了日時、イベントIDが新しいものが上)
+    # 6. ソート (終了日時 → イベントID → ポイント の降順)
+    # 「ポイント」は数値化してからソートする
+    df_filtered["__point_num"] = pd.to_numeric(df_filtered["ポイント"], errors="coerce").fillna(0)
+
     df_filtered.sort_values(
-        ["__end_ts", "event_id"],  # ソートしたい列を優先順位の高い順にリストで指定
-        ascending=[False, False],  # 各列のソート順を指定（どちらも降順なのでFalse）
+        ["__end_ts", "event_id", "__point_num"],  # 第3条件にポイント列を追加
+        ascending=[False, False, False],          # すべて降順
         na_position='last',
         inplace=True
     )
