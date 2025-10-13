@@ -294,12 +294,14 @@ if not do_show:
 # データ取得
 # ----------------------------------------------------------------------
 
-# 🎯 常に最新CSVを取得する（キャッシュを使わない）
-# 管理者モード または ライバーモード共通で最新を再取得
-df_all = load_event_db(EVENT_DB_URL)
+# 🎯 常に最新CSVを取得する（セッションキャッシュを無効化）
+if st.session_state.get("refresh_trigger", False) or "df_all" not in st.session_state:
+    df_all = load_event_db(EVENT_DB_URL)
+    st.session_state.df_all = df_all
+    st.session_state.refresh_trigger = False
+else:
+    df_all = st.session_state.df_all.copy()
 
-# セッションにも保存（他箇所で参照する前提があるため）
-st.session_state.df_all = df_all
 
 
 if st.session_state.df_all.empty:
