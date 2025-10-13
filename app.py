@@ -871,24 +871,6 @@ if is_admin:
     )
     # -------------------------------------------------------------------
 
-
-    # ----------------------------------------------------------------------
-    # 🔍 現在配信中ルーム一覧を取得
-    # ----------------------------------------------------------------------
-    live_data = http_get_json("https://www.showroom-live.com/api/live/onlives")
-
-    live_room_ids = set()
-    if live_data and "onlives" in live_data:
-        for genre_block in live_data["onlives"]:
-            for live in genre_block.get("lives", []):
-                rid = str(live.get("room_id"))
-                if rid:
-                    live_room_ids.add(rid)
-
-    # 現在配信中ルームかどうかのフラグ列を追加
-    df_filtered["is_live_now"] = df_filtered["ルームID"].astype(str).isin(live_room_ids)
-
-
     # 6. ソート (終了日時 → イベントID → ポイント の降順)
     # 「ポイント」は数値化してからソートする
     df_filtered["__point_num"] = pd.to_numeric(df_filtered["ポイント"], errors="coerce").fillna(0)
@@ -1149,29 +1131,31 @@ def make_html_table_admin(df):
     </tr></thead><tbody>
     """
     for _, r in df.iterrows():
+        # ハイライトクラス決定: 終了当日が優先、そうでなければ開催中
         cls = "end_today" if r.get("is_end_today") else ("ongoing" if r.get("is_ongoing") else "")
+
         url_value = r.get("URL")
         room_id_value = r.get("ルームID")
+        
         url = url_value if pd.notna(url_value) and url_value else ""
         room_id = room_id_value if pd.notna(room_id_value) and room_id_value else ""
 
         name = r.get("イベント名") or ""
         liver_name = r.get("__display_liver_name") or r.get("ライバー名") or ""
         
-        # 🔥 現在配信中ならライバー名を太字に
-        if r.get("is_live_now"):
-            liver_name = f"<strong>{liver_name}</strong>"
-
         point_raw = r.get('ポイント')
         point = f"{float(point_raw):,.0f}" if pd.notna(point_raw) and str(point_raw) not in ('-', '') else str(point_raw or '')
+        
         event_link = f'<a class="evlink" href="{url}" target="_blank">{name}</a>' if url else name
+        
+        # ライバー名リンク (別タブ)
         liver_link_url = f"https://www.showroom-live.com/room/profile?room_id={room_id}"
         liver_link = f'<a class="liver-link" href="{liver_link_url}" target="_blank">{liver_name}</a>' if room_id else liver_name
 
         html += f'<tr class="{cls}">'
         html += f"<td>{liver_link}</td><td>{event_link}</td><td>{r['開始日時']}</td><td>{r['終了日時']}</td>"
         html += f"<td>{r['順位']}</td><td>{point}</td><td>{r['レベル']}</td>"
-        html += f"<td>{r.get('event_id', '')}</td><td>{r.get('ルームID', '')}</td>"
+        html += f"<td>{r.get('event_id', '')}</td><td>{r.get('ルームID', '')}</td>"  # ★ 追加行 ★
         html += "</tr>"
         
     html += "</tbody></table></div>"
