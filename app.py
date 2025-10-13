@@ -293,11 +293,14 @@ if not do_show:
 # ----------------------------------------------------------------------
 # データ取得
 # ----------------------------------------------------------------------
-# 管理者モードは毎回CSVを再ロード（または最新化ボタン押下時）
-if 'df_all' not in st.session_state or is_admin or st.session_state.get('refresh_trigger', False):
-    # ライバーモードの挙動に合わせ、spinnerを削除
-    df_all = load_event_db(EVENT_DB_URL)
-    st.session_state.df_all = df_all # セッションに保存
+
+# 🎯 常に最新CSVを取得する（キャッシュを使わない）
+# 管理者モード または ライバーモード共通で最新を再取得
+df_all = load_event_db(EVENT_DB_URL)
+
+# セッションにも保存（他箇所で参照する前提があるため）
+st.session_state.df_all = df_all
+
 
 if st.session_state.df_all.empty:
     st.stop()
@@ -1190,9 +1193,10 @@ else:
     # ★★★ 修正箇所: ここに最新化ボタンを追加 ★★★
     st.button(
         "🔄 終了前イベントの最新化", 
+        on_click=refresh_data,  # ← 追加
         key="librarian_refresh_button"
     )
-    # ★★★ 修正箇所ここまで ★★★    
+    # ★★★ 修正箇所ここまで ★★★
     
     st.markdown(make_html_table_user(df_show, room_id), unsafe_allow_html=True)
     st.caption("2023年9月以降に開始された参加イベントを表示しています。黄色ハイライト行は終了前のイベントです。※ハイライトはイベント終了後、1時間後に消えます。")
