@@ -1296,8 +1296,6 @@ if is_admin:
                 st.warning("⚠️ 数値のルームIDを入力してください。")
 
     # --- 登録済みリスト表示 ---
-    st.markdown("#### 📋 登録済みユーザー一覧")
-
     if df_add.empty:
         st.info("現在、登録済みのルームIDはありません。")
     else:
@@ -1322,9 +1320,54 @@ if is_admin:
                 })
             time.sleep(0.2)
 
+        # DataFrame化
         df_prof = pd.DataFrame(profiles)
-        st.dataframe(df_prof, use_container_width=True)
 
+        # --- HTMLテーブルの生成（イベント一覧に合わせた見た目） ---
+        html = """
+        <style>
+        .add-table { width: 100%; border-collapse: collapse; font-size:14px; margin-top:8px; }
+        .add-table thead th { background:#0b66c2; color:#fff; padding:8px; border:1px solid #e8eef7; text-align:center; position: sticky; top: 0; z-index: 5; }
+        .add-table td { padding:8px; border:1px solid #f2f6fb; text-align:center; vertical-align: middle; }
+        .add-table td.left { text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px; }
+        .add-table .link { color:#0b57d0; text-decoration:underline; }
+        .add-table-wrapper { max-height: 420px; overflow-y: auto; border:1px solid #ddd; border-radius:6px; padding:4px; }
+        </style>
+        <div class="add-table-wrapper"><table class="add-table">
+        <thead><tr>
+          <th>ルーム名</th><th>SHOWランク</th><th>フォロワー数</th><th>まいにち配信</th><th>ルームID</th>
+        </tr></thead><tbody>
+        """
+
+        for _, row in df_prof.iterrows():
+            room_name = row.get("ルーム名") or ""
+            show_rank = row.get("SHOWランク") or "-"
+            follower = row.get("フォロワー数")
+            try:
+                follower_fmt = f"{int(follower):,}" if str(follower) not in ("-", "") and pd.notna(follower) else (str(follower) if follower is not None else "-")
+            except Exception:
+                follower_fmt = str(follower or "-")
+            live_days = row.get("まいにち配信") or "-"
+            rid = row.get("ルームID") or ""
+            # ルーム名にプロフィールページへのリンクを付与
+            if rid:
+                room_link = f'<a class="link" href="https://www.showroom-live.com/room/profile?room_id={rid}" target="_blank">{room_name}</a>'
+            else:
+                room_link = room_name
+
+            html += "<tr>"
+            html += f'<td class="left">{room_link}</td>'
+            html += f"<td>{show_rank}</td>"
+            html += f"<td>{follower_fmt}</td>"
+            html += f"<td>{live_days} 日</td>"
+            html += f"<td>{rid}</td>"
+            html += "</tr>"
+
+        html += "</tbody></table></div>"
+
+        st.markdown(html, unsafe_allow_html=True)
+
+        # CSVダウンロード（既存ボタンと同じ）
         csv_bytes = df_prof.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
         st.download_button(
             "登録ユーザー一覧をCSVでダウンロード",
