@@ -962,7 +962,7 @@ elif room_id != "":
         border: 1px solid #c9d0d8; /* st.infoの薄い枠線に近い色 */
         border-left: 5px solid #0b66c2; /* st.infoの左側の青い縦線 */
         padding: 10px 15px;
-        margin-bottom: 15px;
+        margin-bottom: 0px;
         border-radius: 6px;
         color: #0b66c2;
         font-size: 17px;
@@ -1008,7 +1008,8 @@ elif room_id != "":
                 border-collapse: collapse;
                 width: 60%;
                 margin-bottom: 20px;
-                font-size: 15px;
+                font-size: 14px;
+                text-align: center;
             }
             .profile-table th, .profile-table td {
                 border: 1px solid #ddd;
