@@ -962,11 +962,41 @@ if is_admin:
                     merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
                     merged_df.drop(columns=["event_id_num"], inplace=True)
 
+                    # --- 集計カウンタを初期化 ---
+                    updated_rows = 0
+                    added_rows = 0
+                    deleted_rows = 0
+
+                    # --- 更新・追加処理 ---
+                    for _, new_row in df_new.iterrows():
+                        eid = str(new_row["event_id"])
+                        rid = str(new_row["ルームID"])
+                        mask = (merged_df["event_id"] == eid) & (merged_df["ルームID"] == rid)
+
+                        if mask.any():
+                            idx = mask.idxmax()
+                            for col in ["順位", "ポイント", "レベル", "イベント名", "開始日時", "終了日時", "URL"]:
+                                merged_df.at[idx, col] = new_row.get(col, merged_df.at[idx, col])
+                            updated_rows += 1
+                        else:
+                            merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
+                            added_rows += 1
+
+                    # --- 不要行削除（APIから除外された場合） ---
+                    before_count = len(merged_df)
+                    merged_df = merged_df[
+                        merged_df[["event_id", "ルームID"]].apply(tuple, axis=1).isin(
+                            df_new[["event_id", "ルームID"]].apply(tuple, axis=1)
+                        )
+                    ]
+                    deleted_rows = before_count - len(merged_df)
+
+                    # --- 保存 ---
                     csv_bytes = merged_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
 
                     try:
                         ftp_upload_bytes(EVENT_DB_ADD_PATH, csv_bytes)
-                        st.success(f"✅ 登録ユーザー用イベントDB（event_database_add.csv）を更新しました。合計 {len(merged_df)} 件を保存しました。")
+                        st.success(f"✅ 更新完了: 更新 {updated_rows}件 / 新規追加 {added_rows}件 / 削除 {deleted_rows}件 / 合計 {len(merged_df)} 件を保存しました。")
                     except Exception as e:
                         st.warning(f"FTPアップロード失敗: {e}")
                         st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_database_add.csv")
