@@ -1331,7 +1331,7 @@ if is_admin:
         <style>
         .add-table { width: 100%; border-collapse: collapse; font-size:14px; margin-top:8px; }
         .add-table thead th { background:#0b66c2; color:#fff; padding:8px; border:1px solid #e8eef7; text-align:center; position: sticky; top: 0; z-index: 5; }
-        .add-table td { padding:8px; border:1px solid #f2f6fb; text-align:center; vertical-align: middle; }
+        .add-table td { padding:8px; border:1px solid #f2f6fb; text-align:center !important; vertical-align: middle; }
         .add-table td.left { text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px; }
         .add-table .link { color:#0b57d0; text-decoration:underline; }
         .add-table-wrapper { max-height: 420px; overflow-y: auto; border:1px solid #ddd; border-radius:6px; padding:4px; }
