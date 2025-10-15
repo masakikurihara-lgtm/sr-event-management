@@ -987,6 +987,61 @@ elif room_id != "":
     </div>
     """
     st.markdown(label_html, unsafe_allow_html=True)
+    
+    
+    # ===============================
+    # 🔍 プロフィール情報取得と表示
+    # ===============================
+    try:
+        prof_res = requests.get(f"https://www.showroom-live.com/api/room/profile?room_id={room_id}", headers=HEADERS, timeout=6)
+        if prof_res.status_code == 200:
+            prof_json = prof_res.json()
+            room_level = prof_json.get("room_level", "-")
+            show_rank = prof_json.get("show_rank_subdivided", "-")
+            follower_num = prof_json.get("follower_num", "-")
+            live_cont_days = prof_json.get("live_continuous_days", "-")
+
+            # テーブル形式で表示
+            st.markdown("""
+            <style>
+            .profile-table {
+                border-collapse: collapse;
+                width: 60%;
+                margin-bottom: 20px;
+                font-size: 15px;
+            }
+            .profile-table th, .profile-table td {
+                border: 1px solid #ddd;
+                padding: 8px 10px;
+                text-align: center;
+            }
+            .profile-table th {
+                background-color: #0b66c2;
+                color: white;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+
+            st.markdown(f"""
+            <table class="profile-table">
+                <thead><tr>
+                    <th>ルームレベル</th>
+                    <th>SHOWランク</th>
+                    <th>フォロワー数</th>
+                    <th>まいにち配信</th>
+                </tr></thead>
+                <tbody><tr>
+                    <td>{room_level}</td>
+                    <td>{show_rank}</td>
+                    <td>{follower_num:,}</td>
+                    <td>{live_cont_days} 日</td>
+                </tr></tbody>
+            </table>
+            """, unsafe_allow_html=True)
+    except Exception as e:
+        st.warning(f"プロフィール情報を取得できませんでした: {e}")
+
+    
 
     disp_cols = ["イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル"]
     df_show = df[disp_cols + ["is_ongoing", "__highlight_style", "URL", "ルームID"]].copy()
