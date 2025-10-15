@@ -1233,6 +1233,107 @@ if is_admin:
     cols_to_drop = [c for c in ["is_ongoing", "is_end_today", "__point_num", "URL", "ルームID", "__display_liver_name"] if c in df_show.columns]
     csv_bytes = df_show.drop(columns=cols_to_drop).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
     st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_history_admin.csv", key="admin_csv_download")
+    
+
+
+    # ==========================================================
+    # 🧩 管理者モード追加機能：ユーザーID登録・確認セクション
+    # ==========================================================
+    st.markdown("---")
+    st.markdown("### 🧩 ユーザーID登録・確認（管理者専用オプション）")
+
+    ADD_ROOM_LIST_URL = "https://mksoul-pro.com/showroom/file/room_list.add.csv"
+
+    import ftplib, io
+
+    def upload_add_room_csv(df_add):
+        try:
+            ftp_info = st.secrets.get("ftp", {})
+            host = ftp_info.get("host")
+            user = ftp_info.get("user")
+            password = ftp_info.get("password")
+            if not host or not user or not password:
+                st.error("FTP設定が見つかりません。st.secrets['ftp'] を確認してください。")
+                return False
+            csv_bytes = df_add.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+            with ftplib.FTP(host, timeout=30) as ftp:
+                ftp.login(user, password)
+                with io.BytesIO(csv_bytes) as bf:
+                    bf.seek(0)
+                    ftp.storbinary("STOR /mksoul-pro.com/showroom/file/room_list.add.csv", bf)
+            return True
+        except Exception as e:
+            st.error(f"FTPアップロードに失敗しました: {e}")
+            return False
+
+    # --- 既存登録済みデータ読込 ---
+    try:
+        df_add = pd.read_csv(ADD_ROOM_LIST_URL, dtype=str)
+        if "ルームID" not in df_add.columns:
+            df_add = pd.DataFrame(columns=["ルームID"])
+    except Exception:
+        df_add = pd.DataFrame(columns=["ルームID"])
+
+    # --- ユーザーID登録フォーム ---
+    st.markdown("#### 🔢 新規ユーザーID登録")
+    new_room_id = st.text_input("ルームIDを入力してください（数値のみ）", key="new_room_id_input", placeholder="例：123456")
+
+    col_add1, col_add2 = st.columns([1, 3])
+    with col_add1:
+        if st.button("➕ 登録", key="add_room_button"):
+            if new_room_id and new_room_id.strip().isdigit():
+                new_room_id = new_room_id.strip()
+                if new_room_id not in df_add["ルームID"].astype(str).values:
+                    df_add = pd.concat([df_add, pd.DataFrame({"ルームID": [new_room_id]})], ignore_index=True)
+                    success = upload_add_room_csv(df_add)
+                    if success:
+                        st.success(f"✅ ルームID {new_room_id} を登録しました。")
+                        time.sleep(1)
+                        st.rerun()
+                else:
+                    st.warning("⚠️ 既に登録済みのルームIDです。")
+            else:
+                st.warning("⚠️ 数値のルームIDを入力してください。")
+
+    # --- 登録済みリスト表示 ---
+    st.markdown("#### 📋 登録済みユーザー一覧")
+
+    if df_add.empty:
+        st.info("現在、登録済みのルームIDはありません。")
+    else:
+        profiles = []
+        for rid in df_add["ルームID"].dropna().astype(str).tolist():
+            prof = http_get_json(API_ROOM_PROFILE, params={"room_id": rid})
+            if prof:
+                profiles.append({
+                    "ルーム名": prof.get("room_name", ""),
+                    "SHOWランク": prof.get("show_rank_subdivided", "-"),
+                    "フォロワー数": prof.get("follower_num", "-"),
+                    "まいにち配信": prof.get("live_continuous_days", "-"),
+                    "ルームID": rid
+                })
+            else:
+                profiles.append({
+                    "ルーム名": "(取得失敗)",
+                    "SHOWランク": "-",
+                    "フォロワー数": "-",
+                    "まいにち配信": "-",
+                    "ルームID": rid
+                })
+            time.sleep(0.2)
+
+        df_prof = pd.DataFrame(profiles)
+        st.dataframe(df_prof, use_container_width=True)
+
+        csv_bytes = df_prof.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+        st.download_button(
+            "登録ユーザー一覧をCSVでダウンロード",
+            data=csv_bytes,
+            file_name="room_list.add_view.csv",
+            key="download_add_csv"
+        )
+    
+    
 
 else:
     # ライバーモードの表示 (既存ロジック)
