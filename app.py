@@ -1242,7 +1242,7 @@ if is_admin:
     st.markdown("---")
     st.markdown("### 🧩 ユーザーID登録・確認（管理者専用オプション）")
 
-    ADD_ROOM_LIST_URL = "https://mksoul-pro.com/showroom/file/room_list.add.csv"
+    ADD_ROOM_LIST_URL = "https://mksoul-pro.com/showroom/file/room_list_add.csv"
 
     import ftplib, io
 
@@ -1260,7 +1260,7 @@ if is_admin:
                 ftp.login(user, password)
                 with io.BytesIO(csv_bytes) as bf:
                     bf.seek(0)
-                    ftp.storbinary("STOR /mksoul-pro.com/showroom/file/room_list.add.csv", bf)
+                    ftp.storbinary("STOR /mksoul-pro.com/showroom/file/room_list_add.csv", bf)
             return True
         except Exception as e:
             st.error(f"FTPアップロードに失敗しました: {e}")
@@ -1329,7 +1329,7 @@ if is_admin:
         st.download_button(
             "登録ユーザー一覧をCSVでダウンロード",
             data=csv_bytes,
-            file_name="room_list.add_view.csv",
+            file_name="room_list_add_view.csv",
             key="download_add_csv"
         )
     
