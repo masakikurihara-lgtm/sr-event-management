@@ -1014,7 +1014,7 @@ elif room_id != "":
             .profile-table th, .profile-table td {
                 border: 1px solid #ddd;
                 padding: 8px 10px;
-                text-align: center;
+                text-align: center !important;
             }
             .profile-table th {
                 background-color: #0b66c2;
