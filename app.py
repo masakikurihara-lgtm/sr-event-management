@@ -13,6 +13,8 @@ JST = pytz.timezone("Asia/Tokyo")
 
 EVENT_DB_URL = "https://mksoul-pro.com/showroom/file/event_database.csv"
 ROOM_LIST_URL = "https://mksoul-pro.com/showroom/file/room_list.csv"  #認証用
+EVENT_DB_ADD_URL = "https://mksoul-pro.com/showroom/file/event_database_add.csv"
+ROOM_LIST_ADD_URL = "https://mksoul-pro.com/showroom/file/room_list_add.csv"
 API_ROOM_PROFILE = "https://www.showroom-live.com/api/room/profile"
 API_ROOM_LIST = "https://www.showroom-live.com/api/event/room_list"
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; mksoul-view/1.4)"}
@@ -805,6 +807,169 @@ if is_admin:
                     except Exception as e:
                         st.warning(f"FTPアップロード失敗: {e}")
                         st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_database.csv")
+
+            # ============================================================
+            # 登録ユーザー用DB（event_database_add.csv）更新ボタン
+            # ============================================================
+            with run_col2:
+                if st.button("🧩 登録ユーザーDB更新開始", key="run_add_db_update"):
+                    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+                    st.info("登録ユーザーのイベントデータ更新を開始します。")
+                    progress = st.progress(0)
+
+                    ROOM_LIST_ADD_URL = "https://mksoul-pro.com/showroom/file/room_list_add.csv"
+                    EVENT_DB_ADD_PATH = "/mksoul-pro.com/showroom/file/event_database_add.csv"
+
+                    # 登録ユーザーリストを取得
+                    df_add_rooms = pd.read_csv(ROOM_LIST_ADD_URL, dtype=str)
+                    add_room_ids = set(df_add_rooms["ルームID"].astype(str).tolist())
+
+                    # =========================================================
+                    # イベントスキャン処理
+                    # =========================================================
+                    valid_ids = []
+                    for eid in range(int(start_id), int(end_id) + 1):
+                        data = http_get_json(API_ROOM_LIST, params={"event_id": eid, "p": 1})
+                        if data and ("list" in data and data["list"]):
+                            has_target = any(str(e.get("room_id")) in add_room_ids for e in data["list"])
+                            if not has_target:
+                                continue
+                            valid_ids.append(eid)
+                        time.sleep(0.03)
+
+                    if not valid_ids:
+                        st.warning("📭 該当イベントが見つかりません。範囲または登録ルームを確認してください。")
+                        st.stop()
+
+                    # =========================================================
+                    # イベント処理関数
+                    # =========================================================
+                    def process_event(event_id):
+                        recs = []
+                        entries = []
+                        page = 1
+
+                        while True:
+                            data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": page})
+                            if not data or "list" not in data:
+                                break
+                            page_entries = data["list"]
+
+                            # 登録ユーザーのみ対象
+                            page_entries = [e for e in page_entries if str(e.get("room_id")) in add_room_ids]
+                            if page_entries:
+                                entries.extend(page_entries)
+
+                            if not data.get("next_page"):
+                                break
+                            page += 1
+                            time.sleep(0.03)
+
+                        if not entries:
+                            return []
+
+                        matched = [e for e in entries if str(e.get("room_id")) in add_room_ids]
+                        if not matched:
+                            return []
+
+                        # イベント詳細取得
+                        detail = None
+                        for e in matched:
+                            rid = str(e.get("room_id"))
+                            data2 = http_get_json(API_CONTRIBUTION, params={"event_id": event_id, "room_id": rid})
+                            if data2 and "event" in data2:
+                                detail = data2["event"]
+                                break
+
+                        # レコード生成
+                        for e in matched:
+                            rid = str(e.get("room_id"))
+                            rank = e.get("rank") or e.get("position") or "-"
+                            point = e.get("point") or e.get("total_point") or 0
+                            quest = e.get("event_entry", {}).get("quest_level") if isinstance(e.get("event_entry"), dict) else e.get("quest_level") or 0
+                            recs.append({
+                                "PR対象": "",
+                                "ライバー名": e.get("room_name", ""),
+                                "アカウントID": e.get("account_id", ""),
+                                "イベント名": detail.get("event_name") if detail else "",
+                                "開始日時": fmt_time(detail.get("started_at")) if detail else "",
+                                "終了日時": fmt_time(detail.get("ended_at")) if detail else "",
+                                "順位": rank,
+                                "ポイント": point,
+                                "備考": "",
+                                "紐付け": "○",
+                                "URL": detail.get("event_url") if detail else "",
+                                "レベル": quest,
+                                "event_id": str(event_id),
+                                "ルームID": rid,
+                                "イベント画像（URL）": (detail.get("image") if detail else "")
+                            })
+                        return recs
+
+                    # =========================================================
+                    # 並列処理
+                    # =========================================================
+                    all_records = []
+                    total = len(valid_ids)
+                    done = 0
+
+                    with ThreadPoolExecutor(max_workers=int(max_workers)) as ex:
+                        futures = {ex.submit(process_event, eid): eid for eid in valid_ids}
+                        for fut in as_completed(futures):
+                            eid = futures[fut]
+                            try:
+                                recs = fut.result()
+                                all_records.extend(recs)
+                            except Exception as e:
+                                st.error(f"event_id={eid}: {e}")
+                            done += 1
+                            progress.progress(done / total)
+
+                    if not all_records:
+                        st.warning("📭 登録ユーザーの該当データがありません。")
+                        st.stop()
+
+                    # =========================================================
+                    # 結果をマージ＆保存
+                    # =========================================================
+                    df_new = pd.DataFrame(all_records)
+                    try:
+                        existing_df = load_event_db("https://mksoul-pro.com/showroom/file/event_database_add.csv")
+                    except Exception:
+                        existing_df = pd.DataFrame()
+
+                    merged_df = existing_df.copy()
+                    merged_df["event_id"] = merged_df["event_id"].astype(str)
+                    merged_df["ルームID"] = merged_df["ルームID"].astype(str)
+                    df_new["event_id"] = df_new["event_id"].astype(str)
+                    df_new["ルームID"] = df_new["ルームID"].astype(str)
+
+                    for _, new_row in df_new.iterrows():
+                        eid = str(new_row["event_id"])
+                        rid = str(new_row["ルームID"])
+                        mask = (merged_df["event_id"] == eid) & (merged_df["ルームID"] == rid)
+
+                        if mask.any():
+                            idx = mask.idxmax()
+                            for col in ["順位", "ポイント", "レベル", "イベント名", "開始日時", "終了日時", "URL"]:
+                                merged_df.at[idx, col] = new_row.get(col, merged_df.at[idx, col])
+                        else:
+                            merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
+
+                    # ソート・保存
+                    merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
+                    merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
+                    merged_df.drop(columns=["event_id_num"], inplace=True)
+
+                    csv_bytes = merged_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+
+                    try:
+                        ftp_upload_bytes(EVENT_DB_ADD_PATH, csv_bytes)
+                        st.success(f"✅ 登録ユーザー用イベントDB（event_database_add.csv）を更新しました。合計 {len(merged_df)} 件を保存しました。")
+                    except Exception as e:
+                        st.warning(f"FTPアップロード失敗: {e}")
+                        st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_database_add.csv")
 
 
 
