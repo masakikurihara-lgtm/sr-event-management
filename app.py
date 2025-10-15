@@ -1296,6 +1296,9 @@ if is_admin:
                 st.warning("⚠️ 数値のルームIDを入力してください。")
 
     # --- 登録済みリスト表示 ---
+    st.markdown("#### 📋 登録済みユーザー一覧")
+
+    # --- 登録済みリスト表示 ---
     if df_add.empty:
         st.info("現在、登録済みのルームIDはありません。")
     else:
@@ -1366,6 +1369,7 @@ if is_admin:
         html += "</tbody></table></div>"
 
         st.markdown(html, unsafe_allow_html=True)
+        st.caption(f"")
 
         # CSVダウンロード（既存ボタンと同じ）
         csv_bytes = df_prof.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
