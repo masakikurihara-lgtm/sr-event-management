@@ -982,11 +982,16 @@ if is_admin:
                             merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
                             added_rows += 1
 
-                    # --- 不要行削除（APIから除外された場合） ---
+                    # --- 不要行削除（スキャン範囲内のみ削除対象） ---
                     before_count = len(merged_df)
+                    scanned_event_ids = set(map(str, valid_ids))
+
                     merged_df = merged_df[
-                        merged_df[["event_id", "ルームID"]].apply(tuple, axis=1).isin(
-                            df_new[["event_id", "ルームID"]].apply(tuple, axis=1)
+                        ~(
+                            (merged_df["event_id"].isin(scanned_event_ids)) &
+                            ~merged_df[["event_id", "ルームID"]].apply(tuple, axis=1).isin(
+                                df_new[["event_id", "ルームID"]].apply(tuple, axis=1)
+                            )
                         )
                     ]
                     deleted_rows = before_count - len(merged_df)
