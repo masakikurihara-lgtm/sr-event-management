@@ -616,6 +616,7 @@ if is_admin:
                     f"<div style='color:gray; font-size:12px;'>📂 FTP保存先: {ftp_path}</div>",
                     unsafe_allow_html=True
                 )
+                st.markdown("")
 
                 if st.button("🔄 イベントDB更新開始", key="run_db_update"):
                     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -844,6 +845,7 @@ if is_admin:
                     f"<div style='color:gray; font-size:12px;'>📂 FTP保存先: {EVENT_DB_ADD_PATH}</div>",
                     unsafe_allow_html=True
                 )
+                st.markdown("")
 
                 if st.button("🧩 登録ユーザーDB更新開始", key="run_add_db_update"):
                     from concurrent.futures import ThreadPoolExecutor, as_completed
