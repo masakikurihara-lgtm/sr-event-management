@@ -612,6 +612,7 @@ if is_admin:
             # ============================================================
             with run_col1:
                 ftp_path = "/mksoul-pro.com/showroom/file/event_database.csv"
+                st.markdown("")
                 st.markdown(
                     f"<div style='color:gray; font-size:12px;'>📂 FTP保存先: {ftp_path}</div>",
                     unsafe_allow_html=True
@@ -841,6 +842,7 @@ if is_admin:
             # ============================================================
             with run_col2:
                 EVENT_DB_ADD_PATH = "/mksoul-pro.com/showroom/file/event_database_add.csv"
+                st.markdown("")
                 st.markdown(
                     f"<div style='color:gray; font-size:12px;'>📂 FTP保存先: {EVENT_DB_ADD_PATH}</div>",
                     unsafe_allow_html=True
