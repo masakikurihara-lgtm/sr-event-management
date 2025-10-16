@@ -858,7 +858,7 @@ if is_admin:
                     ROOM_LIST_ADD_URL = "https://mksoul-pro.com/showroom/file/room_list_add.csv"
                     EVENT_DB_ADD_PATH = "/mksoul-pro.com/showroom/file/event_database_add.csv"
                     
-                    st.caption(f"📂 FTP保存先: {EVENT_DB_ADD_PATH}")
+                    #st.caption(f"📂 FTP保存先: {EVENT_DB_ADD_PATH}")
 
                     # 登録ユーザーリストを取得
                     df_add_rooms = pd.read_csv(ROOM_LIST_ADD_URL, dtype=str)
