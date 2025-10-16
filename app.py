@@ -286,6 +286,24 @@ room_id = st.session_state.room_input_value.strip()
 is_admin = (room_id == "mksp154851")
 do_show = st.session_state.show_data and room_id != ""
 
+
+# =========================================================
+# 【追加】登録ユーザー判定 ("touroku"で始まる入力)
+# =========================================================
+is_touroku = room_id.startswith("touroku")
+
+if is_touroku:
+    # 「touroku」を除いたルームIDに変換
+    room_id = room_id.replace("touroku", "", 1)
+    # 登録ユーザー用DB/ルームリストを使用
+    EVENT_DB_ACTIVE_URL = EVENT_DB_ADD_URL
+    ROOM_LIST_ACTIVE_URL = ROOM_LIST_ADD_URL
+else:
+    # 既存（管理者・通常）ルートを維持
+    EVENT_DB_ACTIVE_URL = EVENT_DB_URL
+    ROOM_LIST_ACTIVE_URL = ROOM_LIST_URL
+
+
 if not do_show:
     if room_id == "":
         # st.info("ルームIDを入力して「表示する」を押してください。") # ライバーモードの挙動に合わせ、infoを削除
@@ -298,7 +316,8 @@ if not do_show:
 
 # 🎯 常に最新CSVを取得する（セッションキャッシュを無効化）
 if st.session_state.get("refresh_trigger", False) or "df_all" not in st.session_state:
-    df_all = load_event_db(EVENT_DB_URL)
+    #df_all = load_event_db(EVENT_DB_URL)
+    df_all = load_event_db(EVENT_DB_ACTIVE_URL)
     st.session_state.df_all = df_all
     st.session_state.refresh_trigger = False
 else:
