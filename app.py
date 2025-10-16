@@ -531,8 +531,8 @@ if is_admin:
             max_workers = st.number_input("並列処理数", min_value=1, max_value=30, value=3)
             save_interval = st.number_input("途中保存間隔（件）", min_value=50, value=300, step=50)
             #ftp_path = st.text_input("FTP保存パス", value="/mksoul-pro.com/showroom/file/event_database.csv")
-            ftp_path = "/mksoul-pro.com/showroom/file/event_database.csv"
-            st.caption(f"📂 FTP保存先: {ftp_path}")
+            #ftp_path = "/mksoul-pro.com/showroom/file/event_database.csv"
+            #st.caption(f"📂 FTP保存先: {ftp_path}")
 
             # ------------------------------------------------------------
             # ✨追加：特定ルーム限定更新機能
@@ -611,6 +611,12 @@ if is_admin:
             # 全ルーム更新実行ボタン（既存）
             # ============================================================
             with run_col1:
+                ftp_path = "/mksoul-pro.com/showroom/file/event_database.csv"
+                st.markdown(
+                    f"<div style='color:gray; font-size:12px;'>📂 FTP保存先: {ftp_path}</div>",
+                    unsafe_allow_html=True
+                )
+
                 if st.button("🔄 イベントDB更新開始", key="run_db_update"):
                     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -833,6 +839,12 @@ if is_admin:
             # 登録ユーザー用DB（event_database_add.csv）更新ボタン
             # ============================================================
             with run_col2:
+                EVENT_DB_ADD_PATH = "/mksoul-pro.com/showroom/file/event_database_add.csv"
+                st.markdown(
+                    f"<div style='color:gray; font-size:12px;'>📂 FTP保存先: {EVENT_DB_ADD_PATH}</div>",
+                    unsafe_allow_html=True
+                )
+
                 if st.button("🧩 登録ユーザーDB更新開始", key="run_add_db_update"):
                     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -841,6 +853,8 @@ if is_admin:
 
                     ROOM_LIST_ADD_URL = "https://mksoul-pro.com/showroom/file/room_list_add.csv"
                     EVENT_DB_ADD_PATH = "/mksoul-pro.com/showroom/file/event_database_add.csv"
+                    
+                    st.caption(f"📂 FTP保存先: {EVENT_DB_ADD_PATH}")
 
                     # 登録ユーザーリストを取得
                     df_add_rooms = pd.read_csv(ROOM_LIST_ADD_URL, dtype=str)
