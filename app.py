@@ -931,7 +931,7 @@ if is_admin:
                         st.stop()
 
                     # =========================================================
-                    # 結果をマージ＆保存
+                    # 結果をマージ＆保存（修正版）
                     # =========================================================
                     df_new = pd.DataFrame(all_records)
                     try:
@@ -945,44 +945,29 @@ if is_admin:
                     df_new["event_id"] = df_new["event_id"].astype(str)
                     df_new["ルームID"] = df_new["ルームID"].astype(str)
 
-                    for _, new_row in df_new.iterrows():
-                        eid = str(new_row["event_id"])
-                        rid = str(new_row["ルームID"])
-                        mask = (merged_df["event_id"] == eid) & (merged_df["ルームID"] == rid)
-
-                        if mask.any():
-                            idx = mask.idxmax()
-                            for col in ["順位", "ポイント", "レベル", "イベント名", "開始日時", "終了日時", "URL"]:
-                                merged_df.at[idx, col] = new_row.get(col, merged_df.at[idx, col])
-                        else:
-                            merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
-
-                    # ソート・保存
-                    merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
-                    merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
-                    merged_df.drop(columns=["event_id_num"], inplace=True)
-
-                    # --- 集計カウンタを初期化 ---
+                    # --- カウンタ初期化 ---
                     updated_rows = 0
                     added_rows = 0
                     deleted_rows = 0
 
-                    # --- 更新・追加処理 ---
+                    # --- 更新・追加処理（1回のみ実施）---
                     for _, new_row in df_new.iterrows():
                         eid = str(new_row["event_id"])
                         rid = str(new_row["ルームID"])
                         mask = (merged_df["event_id"] == eid) & (merged_df["ルームID"] == rid)
 
                         if mask.any():
+                            # 既存データ → 更新
                             idx = mask.idxmax()
                             for col in ["順位", "ポイント", "レベル", "イベント名", "開始日時", "終了日時", "URL"]:
                                 merged_df.at[idx, col] = new_row.get(col, merged_df.at[idx, col])
                             updated_rows += 1
                         else:
+                            # 新規データ → 追加
                             merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
                             added_rows += 1
 
-                    # --- 不要行削除（スキャン範囲内のみ削除対象） ---
+                    # --- 不要行削除（スキャン範囲内のみ削除対象）---
                     before_count = len(merged_df)
                     scanned_event_ids = set(map(str, valid_ids))
 
@@ -995,6 +980,11 @@ if is_admin:
                         )
                     ]
                     deleted_rows = before_count - len(merged_df)
+
+                    # --- ソート ---
+                    merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
+                    merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
+                    merged_df.drop(columns=["event_id_num"], inplace=True)
 
                     # --- 保存 ---
                     csv_bytes = merged_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
