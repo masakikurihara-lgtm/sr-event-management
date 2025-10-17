@@ -713,10 +713,7 @@ if is_admin:
 
 
             # =========================================================
-            # 全ルーム更新実行ボタン（既存）
-            # =========================================================
-            # =========================================================
-            # 全ルーム更新実行ボタン（修正後）
+            # 全ルーム更新実行ボタン（最終修正版）
             # =========================================================
             with run_col1:
                 ftp_path = "/mksoul-pro.com/showroom/file/event_database.csv"
@@ -732,50 +729,42 @@ if is_admin:
                     managed_rooms = pd.read_csv(ROOM_LIST_URL, dtype=str)
                     managed_ids = set(managed_rooms["ルームID"].astype(str))
 
-                    # 指定ルーム入力の解釈
-                    target_room_ids = [r.strip() for r in target_room_input.split(",") if r.strip()]
+                    # 指定ルーム入力の解釈（既存機能の維持）
+                    target_room_ids_str = [r.strip() for r in target_room_input.split(",") if r.strip()]
+                    target_room_ids = set(target_room_ids_str) if target_room_ids_str else None
+                    
                     if target_room_ids:
-                        unknown_ids = [rid for rid in target_room_ids if rid not in managed_ids]
-                        valid_target_ids = [rid for rid in target_room_ids if rid in managed_ids]
-                        if unknown_ids and not valid_target_ids:
-                            st.error(f"🚫 指定したルームIDは管理リストに存在しません: {', '.join(unknown_ids)}")
-                            st.stop()
-                        elif unknown_ids:
-                            st.warning(f"⚠️ 存在しないIDを除外して処理します: {', '.join(unknown_ids)}")
-                        target_room_ids = valid_target_ids
-                        st.info(f"✅ 対象ルーム: {', '.join(target_room_ids)}")
+                        st.info(f"✅ 対象ルーム指定ありで更新します: {', '.join(target_room_ids)}")
                     else:
                         st.info("📡 全ルーム対象で更新します。")
 
-                    # ▼▼▼▼▼ 修正箇所：事前スキャンを撤廃し、収集処理に統合 ▼▼▼▼▼
+                    # ■■■ 修正：事前スキャンを撤廃し、全イベントIDに対して直接データ取得を実行 ■■■
                     all_records = []
                     event_id_range = list(range(int(start_id), int(end_id) + 1))
                     total = len(event_id_range)
                     done = 0
 
                     with ThreadPoolExecutor(max_workers=int(max_workers)) as ex:
-                        # process_event_full を全イベントIDに対して実行
-                        futures = {ex.submit(process_event_full, eid, managed_ids, set(target_room_ids) if target_room_ids else None): eid for eid in event_id_range}
+                        # 全てのイベントIDに対し、データ収集関数を直接呼び出す
+                        futures = {ex.submit(process_event_full, eid, managed_ids, target_room_ids): eid for eid in event_id_range}
                         for fut in as_completed(futures):
                             eid = futures[fut]
                             try:
                                 # 関数が返したレコード（対象者がいなければ空リスト）を追加
                                 recs = fut.result()
-                                if recs:
+                                if recs:  # データが取得できた場合のみ追加
                                     all_records.extend(recs)
                             except Exception as e:
                                 st.error(f"event_id={eid} の処理でエラー: {e}")
                             done += 1
                             progress.progress(done / total)
-                    # ▲▲▲▲▲ 修正箇所ここまで ▲▲▲▲▲
+                    # ■■■ 修正ここまで ■■■
 
                     if not all_records:
                         st.warning("📭 指定条件に一致するイベントデータがありませんでした。")
                         st.stop()
 
-                    # =========================================================
-                    # 結果マージ・保存（既存DBの安全な更新）
-                    # =========================================================
+                    # --- 結果マージ・保存処理（変更なし） ---
                     df_new = pd.DataFrame(all_records)
                     try:
                         existing_df = load_event_db(EVENT_DB_URL)
@@ -805,8 +794,7 @@ if is_admin:
                             merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
                             added_rows += 1
                     
-                    # --- 不要行削除ロジックを修正 ---
-                    # スキャンした全イベントIDと、そこで見つかった全ペアを基準に削除を判断
+                    # --- 不要行削除ロジック（変更なし） ---
                     scanned_event_ids = set(map(str, event_id_range))
                     new_pairs = set(df_new[["event_id", "ルームID"]].apply(lambda r: (str(r["event_id"]), str(r["ルームID"])), axis=1).tolist())
 
@@ -814,10 +802,8 @@ if is_admin:
                     def keep_row(row):
                         eid = str(row.get("event_id"))
                         rid = str(row.get("ルームID"))
-                        # スキャン範囲外のイベントは無条件で保持
                         if eid not in scanned_event_ids:
                             return True
-                        # スキャン範囲内のイベントは、今回見つかったペアに含まれている場合のみ保持
                         return (eid, rid) in new_pairs
                     
                     if not merged_df.empty and "event_id" in merged_df.columns and "ルームID" in merged_df.columns:
@@ -826,7 +812,7 @@ if is_admin:
 
                     deleted_rows = before_count - len(merged_df)
 
-                    # ソート
+                    # --- ソート・保存（変更なし） ---
                     merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
                     merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
                     merged_df.drop(columns=["event_id_num"], inplace=True)
