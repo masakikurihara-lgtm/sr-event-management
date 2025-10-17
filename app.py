@@ -595,49 +595,56 @@ if is_admin:
             # --- 共通ユーティリティ：event_list API を全ページ走査して対象 entries を返す
             def fetch_all_pages_entries(event_id, filter_ids=None):
                 """
-                event_id の room_list API をページめくりして、filter_ids に含まれる room_id の entries を返す。
-                filter_ids が None または空集合の場合は全 entries を返す（呼び出し側で絞り込み想定）。
+                event_id の room_list API を確実に全ページ走査して対象 entries を返す。
+                filter_ids が None または空集合の場合は全件取得する。
                 """
                 entries = []
                 page = 1
                 while True:
+                    # API呼び出し
                     data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": page})
-                    if not data or "list" not in data or not data["list"]:
+                    if not data or "list" not in data:
                         break
 
-                    page_entries = data["list"]
+                    page_entries = data.get("list", [])
+                    if not page_entries:
+                        break  # 空ページが返ってきたら終了
 
-                    # ✅ filter_ids が空なら全件、指定されていれば絞り込み
-                    if not filter_ids:
-                        entries.extend(page_entries)
+                    # 🔍 絞り込み
+                    if filter_ids and len(filter_ids) > 0:
+                        matched = [e for e in page_entries if str(e.get("room_id")) in filter_ids]
+                        entries.extend(matched)
                     else:
-                        entries.extend([e for e in page_entries if str(e.get("room_id")) in filter_ids])
+                        entries.extend(page_entries)
 
-                    # ✅ next_page または list件数で終了条件を判断
-                    if not data.get("next_page") or len(page_entries) < 50:
+                    # ✅ ページ内の件数が閾値未満なら次が無いと判断
+                    if len(page_entries) < 50:
                         break
 
+                    # 次ページへ
                     page += 1
-                    time.sleep(0.03)
+                    time.sleep(0.05)  # 軽い間隔でAPIを叩く
                 return entries
+
 
 
             # --- 共通関数（全ルーム更新用）: event_id -> recs を返す（管理者用）
             def process_event_full(event_id, managed_ids, target_room_ids=None):
                 recs = []
 
-                # ✅ target_room_ids が指定されていれば intersection、それ以外は managed_ids 全件
+                # 対象ルーム集合の決定
                 if target_room_ids:
                     filter_ids = managed_ids & set(target_room_ids)
                 else:
                     filter_ids = managed_ids
 
-                # ✅ 全ページ取得（filter_ids が空集合なら全件取得する仕様）
-                entries = fetch_all_pages_entries(event_id, filter_ids if filter_ids else None)
+                # ✅ 全ページから該当ルームを取得（filter_idsが空でも全件読む）
+                entries = fetch_all_pages_entries(event_id, filter_ids if len(filter_ids) > 0 else None)
+
                 if not entries:
                     return []
 
-                # ✅ event detail をルームごとに取得
+                # イベント詳細をルームごとに取得
                 details = {}
                 unique_room_ids = {str(e.get("room_id")) for e in entries}
                 for rid in unique_room_ids:
@@ -646,7 +653,7 @@ if is_admin:
                         details[rid] = data2["event"]
                     time.sleep(0.03)
 
-                # ✅ 各ルームごとのレコード生成
+                # レコード生成
                 for e in entries:
                     rid = str(e.get("room_id"))
                     rank = e.get("rank") or e.get("position") or "-"
@@ -671,6 +678,7 @@ if is_admin:
                         "イベント画像（URL）": (detail.get("image") if detail else "")
                     })
                 return recs
+
 
 
             # --- 共通関数（登録ユーザー用）: event_id -> recs を返す（add 用） ---
