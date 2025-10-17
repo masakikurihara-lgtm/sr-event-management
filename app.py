@@ -1286,6 +1286,14 @@ elif room_id != "":
                 }
             }
 
+            /* ===========================================
+               💻 タブレット（768〜1024px）調整
+               =========================================== */
+            @media screen and (min-width: 768px) and (max-width: 1024px) {
+                .profile-table { width: 90% !important; font-size: 13px !important; }
+                .scroll-table table { width: 1280px !important; }
+                table { font-size: 13px !important; }
+            }
             </style>            
             """, unsafe_allow_html=True)
 
