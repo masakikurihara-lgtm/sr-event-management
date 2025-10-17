@@ -731,15 +731,27 @@ if is_admin:
                     # =========================================================
                     valid_ids = []
                     for eid in range(int(start_id), int(end_id) + 1):
-                        data = http_get_json(API_ROOM_LIST, params={"event_id": eid, "p": 1})
-                        if data and ("list" in data and data["list"]):
-                            # ✅ 指定ルームがいるイベントのみ有効
-                            if target_room_ids:
-                                has_target = any(str(e.get("room_id")) in target_room_ids for e in data["list"])
-                                if not has_target:
-                                    continue
+                        page = 1
+                        has_target = False
+                        while True:
+                            data = http_get_json(API_ROOM_LIST, params={"event_id": eid, "p": page})
+                            if not data or "list" not in data or not data["list"]:
+                                break
+
+                            # ✅ 登録ルームが含まれているかを全ページで確認
+                            if any(str(e.get("room_id")) in add_room_ids for e in data["list"]):
+                                has_target = True
+                                break  # 1ページでも見つかればOK（スキャン目的）
+
+                            # ✅ 次ページがなければ終了
+                            if not data.get("next_page") or len(data["list"]) < 50:
+                                break
+
+                            page += 1
+                            time.sleep(0.03)
+
+                        if has_target:
                             valid_ids.append(eid)
-                        time.sleep(0.03)
 
                     if not valid_ids:
                         st.warning("📭 該当イベントが見つかりません。範囲または指定ルームを確認してください。")
@@ -869,13 +881,27 @@ if is_admin:
                     # =========================================================
                     valid_ids = []
                     for eid in range(int(start_id), int(end_id) + 1):
-                        data = http_get_json(API_ROOM_LIST, params={"event_id": eid, "p": 1})
-                        if data and ("list" in data and data["list"]):
-                            has_target = any(str(e.get("room_id")) in add_room_ids for e in data["list"])
-                            if not has_target:
-                                continue
+                        page = 1
+                        has_target = False
+                        while True:
+                            data = http_get_json(API_ROOM_LIST, params={"event_id": eid, "p": page})
+                            if not data or "list" not in data or not data["list"]:
+                                break
+
+                            # ✅ 登録ルームが含まれているかを全ページで確認
+                            if any(str(e.get("room_id")) in add_room_ids for e in data["list"]):
+                                has_target = True
+                                break  # 1ページでも見つかればOK（スキャン目的）
+
+                            # ✅ 次ページがなければ終了
+                            if not data.get("next_page") or len(data["list"]) < 50:
+                                break
+
+                            page += 1
+                            time.sleep(0.03)
+
+                        if has_target:
                             valid_ids.append(eid)
-                        time.sleep(0.03)
 
                     if not valid_ids:
                         st.warning("📭 該当イベントが見つかりません。範囲または登録ルームを確認してください。")
