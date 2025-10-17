@@ -140,30 +140,61 @@ def get_room_name(room_id):
     return ""
 
 
+# =========================================================
+# イベント情報（順位・ポイント・レベル）取得関数（全ページ対応版）
+# =========================================================
 def get_event_stats_from_roomlist(event_id, room_id):
-    """event_id から room_list API を呼び出し、指定 room_id の rank/point/quest_level を返す（全ページ対応）"""
+    """
+    指定イベント内の特定ルームの順位・ポイント・レベルを取得する。
+    全ページをスキャンして該当ルームを検索する。
+    """
     page = 1
+    found_entry = None
+
     while True:
         data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": page})
-        if not data or "list" not in data or not data["list"]:
+        if not data or "list" not in data:
             break
 
-        for entry in data["list"]:
-            if str(entry.get("room_id")) == str(room_id):
-                return {
-                    "rank": entry.get("rank") or entry.get("position"),
-                    "point": entry.get("point") or entry.get("event_point") or entry.get("total_point"),
-                    "quest_level": entry.get("quest_level") or entry.get("event_entry", {}).get("quest_level"),
-                }
+        entries = data.get("list", [])
+        if not entries:
+            break
 
-        # 続きがなければ終了
-        if not data.get("next_page") or len(data["list"]) < 50:
+        # 対象ルームを検索
+        for entry in entries:
+            rid = str(entry.get("room_id"))
+            if rid == str(room_id):
+                found_entry = entry
+                break
+
+        # 見つかったら即終了
+        if found_entry:
+            break
+
+        # 次ページ判定
+        if not data.get("next_page") and len(entries) < 50:
             break
 
         page += 1
         time.sleep(0.05)  # API負荷軽減
 
-    return None
+    if not found_entry:
+        return None
+
+    # 結果を整形して返す
+    return {
+        "rank": found_entry.get("rank") or found_entry.get("position"),
+        "point": (
+            found_entry.get("point")
+            or found_entry.get("event_point")
+            or found_entry.get("total_point")
+        ),
+        "quest_level": (
+            found_entry.get("quest_level")
+            or (found_entry.get("event_entry", {}) or {}).get("quest_level")
+        ),
+    }
+
 
 
 # 貢献ランク取得関数は、今回は直接リンクを開くため既存ロジックとして残します。
