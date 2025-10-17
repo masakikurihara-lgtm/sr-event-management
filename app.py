@@ -1308,12 +1308,12 @@ elif room_id != "":
                 <tbody><tr>
                     <td>{room_level}</td>
                     <td>{show_rank}</td>
-                    /*<td>{follower_num:,}</td>*/
                     <td>{follower_num}</td>
                     <td>{live_cont_days} 日</td>
                 </tr></tbody>
             </table>
             """, unsafe_allow_html=True)
+            #<td>{follower_num:,}</td> # カンマ区切りの記述
     except Exception as e:
         st.warning(f"プロフィール情報を取得できませんでした: {e}")
 
