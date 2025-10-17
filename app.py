@@ -707,8 +707,8 @@ if is_admin:
                             if not data or "list" not in data or not data["list"]:
                                 break
 
-                            # ✅ 登録ユーザーのみ対象（全ページ分）
-                            filtered = [e for e in data["list"] if str(e.get("room_id")) in add_room_ids]
+                            # ✅ 管理対象ルーム（または指定ルーム）のみ対象（全ページ分）
+                            filtered = [e for e in data["list"] if str(e.get("room_id")) in managed_ids]
                             entries.extend(filtered)
 
                             # ✅ 続きが無ければ終了
