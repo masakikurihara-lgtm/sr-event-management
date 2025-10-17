@@ -704,15 +704,21 @@ if is_admin:
 
                         while True:
                             data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": page})
-                            if not data or "list" not in data or not data["list"]:
+                            if not data or "list" not in data:
                                 break
+                            page_entries = data["list"]
 
-                            # ✅ 登録ユーザーのみ対象（全ページ分）
-                            filtered = [e for e in data["list"] if str(e.get("room_id")) in add_room_ids]
-                            entries.extend(filtered)
+                            # ✅ ルームID指定がある場合、そのIDが見つかったら即終了
+                            if target_room_ids:
+                                page_entries = [e for e in page_entries if str(e.get("room_id")) in target_room_ids]
+                                if page_entries:
+                                    entries.extend(page_entries)
+                                    found_target = True
+                                    break
+                            else:
+                                entries.extend(page_entries)
 
-                            # ✅ 続きが無ければ終了
-                            if not data.get("next_page") or len(data["list"]) < 50:
+                            if not data.get("next_page"):
                                 break
 
                             page += 1
@@ -955,15 +961,16 @@ if is_admin:
 
                         while True:
                             data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": page})
-                            if not data or "list" not in data or not data["list"]:
+                            if not data or "list" not in data:
                                 break
+                            page_entries = data["list"]
 
-                            # ✅ 登録ユーザーのみ対象（全ページ分）
-                            filtered = [e for e in data["list"] if str(e.get("room_id")) in add_room_ids]
-                            entries.extend(filtered)
+                            # 登録ユーザーのみ対象
+                            page_entries = [e for e in page_entries if str(e.get("room_id")) in add_room_ids]
+                            if page_entries:
+                                entries.extend(page_entries)
 
-                            # ✅ 続きが無ければ終了
-                            if not data.get("next_page") or len(data["list"]) < 50:
+                            if not data.get("next_page"):
                                 break
 
                             page += 1
