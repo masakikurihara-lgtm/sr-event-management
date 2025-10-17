@@ -141,18 +141,30 @@ def get_room_name(room_id):
 
 
 def get_event_stats_from_roomlist(event_id, room_id):
-    """event_id から room_list API を呼び出し、指定 room_id の rank/point/quest_level を返す"""
-    data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": 1})
-    if not data or "list" not in data:
-        return None
-    for entry in data["list"]:
-        if str(entry.get("room_id")) == str(room_id):
-            return {
-                "rank": entry.get("rank") or entry.get("position"),
-                "point": entry.get("point") or entry.get("event_point") or entry.get("total_point"),
-                "quest_level": entry.get("quest_level") or entry.get("event_entry", {}).get("quest_level"),
-            }
+    """event_id から room_list API を呼び出し、指定 room_id の rank/point/quest_level を返す（全ページ対応）"""
+    page = 1
+    while True:
+        data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": page})
+        if not data or "list" not in data or not data["list"]:
+            break
+
+        for entry in data["list"]:
+            if str(entry.get("room_id")) == str(room_id):
+                return {
+                    "rank": entry.get("rank") or entry.get("position"),
+                    "point": entry.get("point") or entry.get("event_point") or entry.get("total_point"),
+                    "quest_level": entry.get("quest_level") or entry.get("event_entry", {}).get("quest_level"),
+                }
+
+        # 続きがなければ終了
+        if not data.get("next_page") or len(data["list"]) < 50:
+            break
+
+        page += 1
+        time.sleep(0.05)  # API負荷軽減
+
     return None
+
 
 # 貢献ランク取得関数は、今回は直接リンクを開くため既存ロジックとして残します。
 def fetch_contribution_rank(*args, **kwargs):
