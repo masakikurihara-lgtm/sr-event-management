@@ -595,35 +595,38 @@ if is_admin:
             # --- 共通ユーティリティ：event_list API を全ページ走査して対象 entries を返す
             def fetch_all_pages_entries(event_id, filter_ids=None):
                 """
-                event_id の room_list API を next_page が False になるまで全ページ走査して entries を返す。
-                filter_ids が None の場合は全件対象。
+                event_id の room_list API を全ページ走査して、filter_ids に含まれる room_id の entries を返す。
+                filter_ids が None の場合は全 entries を返す。
                 """
                 entries = []
                 page = 1
+                seen_pages = set()
+
                 while True:
                     data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": page})
-
-                    # --- 例外・データなし時 ---
                     if not data or "list" not in data:
                         break
 
-                    page_entries = data.get("list", [])
-                    if not page_entries:
+                    # 無限ループ防止：同じページを2回読んだら終了
+                    if page in seen_pages:
                         break
+                    seen_pages.add(page)
 
-                    # --- 絞り込み ---
+                    page_entries = data["list"]
                     if filter_ids:
                         page_entries = [e for e in page_entries if str(e.get("room_id")) in filter_ids]
 
                     entries.extend(page_entries)
 
-                    # --- ページ終了条件 ---
-                    if not data.get("next_page"):  # next_pageがFalseなら終了
+                    # ✅ 終了条件（最重要）
+                    if (
+                        not data.get("next_page") or
+                        str(data.get("current_page")) == str(data.get("last_page"))
+                    ):
                         break
 
-                    # --- 次ページへ ---
                     page += 1
-                    time.sleep(0.05)  # API負荷抑制
+                    time.sleep(0.03)
 
                 return entries
 
