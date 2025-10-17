@@ -761,7 +761,7 @@ if is_admin:
                             check_ids = set(target_room_ids) if target_room_ids else managed_ids
                             if any(str(e.get("room_id")) in check_ids for e in data["list"]):
                                 has_target = True
-                                break
+                                #break
                             if not data.get("next_page") or len(data["list"]) < 50:
                                 break
                             page += 1
@@ -898,7 +898,7 @@ if is_admin:
                                 break
                             if any(str(e.get("room_id")) in add_room_ids for e in data["list"]):
                                 has_target = True
-                                break
+                                #break
                             if not data.get("next_page") or len(data["list"]) < 50:
                                 break
                             page += 1
