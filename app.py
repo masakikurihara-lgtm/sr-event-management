@@ -777,7 +777,7 @@ if is_admin:
                                 break
 
                             # ✅ 登録ルームが含まれているかを全ページで確認
-                            if any(str(e.get("room_id")) in add_room_ids for e in data["list"]):
+                            if any(str(e.get("room_id")) in managed_ids for e in data["list"]):
                                 has_target = True
                                 break  # 1ページでも見つかればOK（スキャン目的）
 
