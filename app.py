@@ -1308,7 +1308,8 @@ elif room_id != "":
                 <tbody><tr>
                     <td>{room_level}</td>
                     <td>{show_rank}</td>
-                    <td>{follower_num:,}</td>
+                    /*<td>{follower_num:,}</td>*/
+                    <td>{follower_num}</td>
                     <td>{live_cont_days} 日</td>
                 </tr></tbody>
             </table>
