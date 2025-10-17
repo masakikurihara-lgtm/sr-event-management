@@ -1248,8 +1248,45 @@ elif room_id != "":
             .profile-table th {
                 background-color: #0b66c2;
                 color: white;
+            }            
+
+            /* ===========================================
+               📱 スマートフォン（767px以下）対応CSS
+               =========================================== */
+            @media screen and (max-width: 767px) {
+                /* プロフィールテーブル */
+                .profile-table {
+                    width: 100% !important;
+                    font-size: 12px !important;
+                }
+                .profile-table th, .profile-table td {
+                    padding: 6px !important;
+                }
+
+                /* イベントテーブル全体を横スクロール可能に */
+                .scroll-table {
+                    overflow-x: auto !important;
+                    width: 100% !important;
+                    display: block;
+                    -webkit-overflow-scrolling: touch; /* iPhone慣性スクロール */
+                }
+                .scroll-table table {
+                    width: 800px !important; /* テーブル幅を固定して横スクロール */
+                }
+
+                /* テキストが詰まりすぎないよう微調整 */
+                table {
+                    font-size: 12px !important;
+                }
+
+                /* スマホではボタンを少し大きく */
+                .rank-btn-link {
+                    padding: 6px 8px !important;
+                    font-size: 13px !important;
+                }
             }
-            </style>
+
+            </style>            
             """, unsafe_allow_html=True)
 
             st.markdown(f"""
