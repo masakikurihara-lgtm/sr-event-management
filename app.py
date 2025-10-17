@@ -596,7 +596,7 @@ if is_admin:
             def fetch_all_pages_entries(event_id, filter_ids=None):
                 """
                 event_id の room_list API をページめくりして、filter_ids に含まれる room_id の entries を返す。
-                filter_ids が None の場合は全 entries を返す（呼び出し側で絞り込む想定）。
+                filter_ids が None または空集合の場合は全 entries を返す（呼び出し側で絞り込み想定）。
                 """
                 entries = []
                 page = 1
@@ -604,46 +604,49 @@ if is_admin:
                     data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": page})
                     if not data or "list" not in data or not data["list"]:
                         break
+
                     page_entries = data["list"]
-                    if filter_ids is None:
+
+                    # ✅ filter_ids が空なら全件、指定されていれば絞り込み
+                    if not filter_ids:
                         entries.extend(page_entries)
                     else:
-                        # filter_ids は文字列集合で渡すこと（呼び出し側で set() を準備）
                         entries.extend([e for e in page_entries if str(e.get("room_id")) in filter_ids])
-                    # next_page が無いか、ページの要素数が想定より少ないなら終わる
+
+                    # ✅ next_page または list件数で終了条件を判断
                     if not data.get("next_page") or len(page_entries) < 50:
                         break
+
                     page += 1
                     time.sleep(0.03)
                 return entries
+
 
             # --- 共通関数（全ルーム更新用）: event_id -> recs を返す（管理者用）
             def process_event_full(event_id, managed_ids, target_room_ids=None):
                 recs = []
 
-                # 1) 全ページ走査して管理対象ルームの entries を集める
-                #    target_room_ids が指定されている場合はそれで絞り込み（intersection）
-                filter_ids = managed_ids.copy()
+                # ✅ target_room_ids が指定されていれば intersection、それ以外は managed_ids 全件
                 if target_room_ids:
-                    filter_ids = filter_ids & set(target_room_ids)
+                    filter_ids = managed_ids & set(target_room_ids)
+                else:
+                    filter_ids = managed_ids
 
-                entries = fetch_all_pages_entries(event_id, filter_ids=filter_ids if filter_ids else set())
-
+                # ✅ 全ページ取得（filter_ids が空集合なら全件取得する仕様）
+                entries = fetch_all_pages_entries(event_id, filter_ids if filter_ids else None)
                 if not entries:
                     return []
 
-                # 2) event detail をルームごとに取得（各ルームで detail が取れれば保持）
-                #    取得はループ内で行い、すべてのルームについて detail を持つ可能性を高める
+                # ✅ event detail をルームごとに取得
                 details = {}
-                unique_room_ids = { str(e.get("room_id")) for e in entries }
+                unique_room_ids = {str(e.get("room_id")) for e in entries}
                 for rid in unique_room_ids:
                     data2 = http_get_json(API_CONTRIBUTION, params={"event_id": event_id, "room_id": rid})
                     if data2 and isinstance(data2, dict) and "event" in data2:
                         details[rid] = data2["event"]
-                    # 小休止で API 負荷軽減
                     time.sleep(0.03)
 
-                # 3) レコード生成（entries に含まれる各ルーム）
+                # ✅ 各ルームごとのレコード生成
                 for e in entries:
                     rid = str(e.get("room_id"))
                     rank = e.get("rank") or e.get("position") or "-"
@@ -668,6 +671,7 @@ if is_admin:
                         "イベント画像（URL）": (detail.get("image") if detail else "")
                     })
                 return recs
+
 
             # --- 共通関数（登録ユーザー用）: event_id -> recs を返す（add 用） ---
             def process_event_add(event_id, add_room_ids):
@@ -827,7 +831,7 @@ if is_admin:
 
 
             # =========================================================
-            # 登録ユーザー用DB（event_database_add.csv）更新ボタン
+            # 登録ユーザー用DB更新ボタン（最終修正版）
             # =========================================================
             with run_col2:
                 EVENT_DB_ADD_PATH = "/mksoul-pro.com/showroom/file/event_database_add.csv"
@@ -842,60 +846,38 @@ if is_admin:
                     progress = st.progress(0)
 
                     ROOM_LIST_ADD_URL = "https://mksoul-pro.com/showroom/file/room_list_add.csv"
-                    EVENT_DB_ADD_PATH = "/mksoul-pro.com/showroom/file/event_database_add.csv"
-
-                    # 登録ユーザーリストを取得
+                    
                     df_add_rooms = pd.read_csv(ROOM_LIST_ADD_URL, dtype=str)
                     add_room_ids = set(df_add_rooms["ルームID"].astype(str).tolist())
 
-                    # 有効イベントスキャン（登録ユーザーが参加しているイベントのみ）
-                    valid_ids = []
-                    for eid in range(int(start_id), int(end_id) + 1):
-                        page = 1
-                        has_target = False
-                        while True:
-                            data = http_get_json(API_ROOM_LIST, params={"event_id": eid, "p": page})
-                            if not data or "list" not in data or not data["list"]:
-                                break
-                            if any(str(e.get("room_id")) in add_room_ids for e in data["list"]):
-                                has_target = True
-                                #break
-                            if not data.get("next_page") or len(data["list"]) < 50:
-                                break
-                            page += 1
-                            time.sleep(0.03)
-                        if has_target:
-                            valid_ids.append(eid)
-
-                    if not valid_ids:
-                        st.warning("📭 該当イベントが見つかりません。範囲または登録ルームを確認してください。")
-                        st.stop()
-
-                    # 並列処理
+                    # ■■■ 修正：事前スキャンを撤廃し、全イベントIDに対して直接データ取得を実行 ■■■
                     all_records = []
-                    total = len(valid_ids)
+                    event_id_range = list(range(int(start_id), int(end_id) + 1))
+                    total = len(event_id_range)
                     done = 0
 
                     with ThreadPoolExecutor(max_workers=int(max_workers)) as ex:
-                        futures = {ex.submit(process_event_add, eid, add_room_ids): eid for eid in valid_ids}
+                        futures = {ex.submit(process_event_add, eid, add_room_ids): eid for eid in event_id_range}
                         for fut in as_completed(futures):
                             eid = futures[fut]
                             try:
                                 recs = fut.result()
-                                all_records.extend(recs)
+                                if recs: # データが取得できた場合のみ追加
+                                    all_records.extend(recs)
                             except Exception as e:
-                                st.error(f"event_id={eid}: {e}")
+                                st.error(f"event_id={eid} の処理でエラー: {e}")
                             done += 1
                             progress.progress(done / total)
+                    # ■■■ 修正ここまで ■■■
 
                     if not all_records:
-                        st.warning("📭 登録ユーザーの該当データがありません。")
+                        st.warning("📭 登録ユーザーの該当データがありませんでした。")
                         st.stop()
 
-                    # 結果マージ・保存（add 用）
+                    # --- 結果マージ・保存処理（変更なし） ---
                     df_new = pd.DataFrame(all_records)
                     try:
-                        existing_df = load_event_db(EVENT_DB_ADD_PATH)
+                        existing_df = load_event_db(EVENT_DB_ADD_URL)
                     except Exception:
                         existing_df = pd.DataFrame()
 
@@ -908,8 +890,7 @@ if is_admin:
 
                     updated_rows = 0
                     added_rows = 0
-                    deleted_rows = 0
-
+                    
                     for _, new_row in df_new.iterrows():
                         eid = str(new_row["event_id"])
                         rid = str(new_row["ルームID"])
@@ -923,24 +904,25 @@ if is_admin:
                             merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
                             added_rows += 1
 
-                    # 不要行削除（スキャン範囲内）
-                    scanned_event_ids = set(map(str, valid_ids))
+                    # --- 不要行削除ロジック（変更なし） ---
+                    scanned_event_ids = set(map(str, event_id_range))
                     new_pairs = set(df_new[["event_id", "ルームID"]].apply(lambda r: (str(r["event_id"]), str(r["ルームID"])), axis=1).tolist())
 
                     before_count = len(merged_df)
                     def keep_row_add(row):
-                        eid = str(row["event_id"])
-                        rid = str(row["ルームID"])
-                        if eid in scanned_event_ids:
-                            return (eid, rid) in new_pairs
-                        return True
-
-                    if not merged_df.empty:
+                        eid = str(row.get("event_id"))
+                        rid = str(row.get("ルームID"))
+                        if eid not in scanned_event_ids:
+                            return True
+                        return (eid, rid) in new_pairs
+                    
+                    if not merged_df.empty and "event_id" in merged_df.columns and "ルームID" in merged_df.columns:
                         keep_mask = merged_df.apply(keep_row_add, axis=1)
                         merged_df = merged_df[keep_mask].reset_index(drop=True)
+                    
                     deleted_rows = before_count - len(merged_df)
 
-                    # ソート・保存
+                    # --- ソート・保存（変更なし） ---
                     merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
                     merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
                     merged_df.drop(columns=["event_id_num"], inplace=True)
@@ -952,9 +934,6 @@ if is_admin:
                     except Exception as e:
                         st.warning(f"FTPアップロード失敗: {e}")
                         st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_database_add.csv")
-
-            # === REPLACE END ===
-
 
 
 
