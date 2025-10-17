@@ -1271,7 +1271,7 @@ elif room_id != "":
                     -webkit-overflow-scrolling: touch; /* iPhone慣性スクロール */
                 }
                 .scroll-table table {
-                    width: 1280px !important; /* テーブル幅を固定して横スクロール */
+                    width: 1080px !important; /* テーブル幅を固定して横スクロール */
                 }
 
                 /* テキストが詰まりすぎないよう微調整 */
