@@ -1051,7 +1051,8 @@ elif room_id != "":
     df["終了日時"] = df["終了日時"].apply(fmt_time)
     df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
     df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
-    df = df.sort_values("__start_ts", ascending=False)
+    #df = df.sort_values("__start_ts", ascending=False)
+    df = df.sort_values("__end_ts", ascending=False)
     
     # 3. 2023年9月1日以降のイベントにフィルタリング
     df = df[df["__start_ts"] >= FILTER_START_TS].copy()
