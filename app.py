@@ -1575,7 +1575,7 @@ else:
     
     # ソートボタンの表示
     button_label = (
-        "📅 デフォルト表示に戻す (開始日時降順)"
+        "📅 デフォルト表示に戻す (終了日時降順)"
         if st.session_state.sort_by_point
         else "🏆 ポイントの高い順にソート"
     )
