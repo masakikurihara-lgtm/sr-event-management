@@ -273,14 +273,18 @@ def toggle_full_data():
 
 
 # ---------- UI ----------
-st.markdown("<h1 style='font-size:2.5em;'>🎤 SHOWROOM 参加イベントビューア</h1>", unsafe_allow_html=True)
+st.markdown(
+    "<h1 style='font-size:28px; text-align:left; color:#1f2937;'>🎤 SHOWROOM 参加イベントビューア</h1>",
+    unsafe_allow_html=True
+)
+#st.markdown("<h1 style='font-size:2.5em;'>🎤 SHOWROOM 参加イベントビューア</h1>", unsafe_allow_html=True)
 #st.title("🎤 SHOWROOM 参加イベントビューア")
 st.write("")
 
 
 # ▼▼ 認証ステップ ▼▼
 if not st.session_state.authenticated:
-    st.markdown("### 🔑 認証コードを入力してください")
+    st.markdown("##### 🔑 認証コードを入力してください")
     input_room_id = st.text_input(
         "認証コードを入力してください:",
         placeholder="",
