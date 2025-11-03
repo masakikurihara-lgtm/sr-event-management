@@ -815,16 +815,47 @@ if is_admin:
                             added_rows += 1
                     
                     # --- 不要行削除ロジック（変更なし） ---
+                    #scanned_event_ids = set(map(str, event_id_range))
+                    #new_pairs = set(df_new[["event_id", "ルームID"]].apply(lambda r: (str(r["event_id"]), str(r["ルームID"])), axis=1).tolist())
+                    #
+                    #before_count = len(merged_df)
+                    #def keep_row(row):
+                    #    eid = str(row.get("event_id"))
+                    #    rid = str(row.get("ルームID"))
+                    #    if eid not in scanned_event_ids:
+                    #        return True
+                    #    return (eid, rid) in new_pairs
+
+                    # --- 不要行削除ロジック（修正版） ---
                     scanned_event_ids = set(map(str, event_id_range))
-                    new_pairs = set(df_new[["event_id", "ルームID"]].apply(lambda r: (str(r["event_id"]), str(r["ルームID"])), axis=1).tolist())
+                    new_pairs = set(
+                        df_new[["event_id", "ルームID"]]
+                        .apply(lambda r: (str(r["event_id"]), str(r["ルームID"])), axis=1)
+                        .tolist()
+                    )
 
                     before_count = len(merged_df)
+
                     def keep_row(row):
                         eid = str(row.get("event_id"))
                         rid = str(row.get("ルームID"))
+
+                        # 🔹 特定ルーム指定時 → 指定ルームのみ削除判定対象
+                        if target_room_ids and rid not in target_room_ids:
+                            return True  # 他ルームのデータは保持
+
+                        # 🔹 イベントID範囲外 → 常に保持
                         if eid not in scanned_event_ids:
                             return True
+
+                        # 🔹 範囲内のルームで new_pairs に含まれない場合 → 削除対象
                         return (eid, rid) in new_pairs
+
+                    if not merged_df.empty and "event_id" in merged_df.columns and "ルームID" in merged_df.columns:
+                        keep_mask = merged_df.apply(keep_row, axis=1)
+                        merged_df = merged_df[keep_mask].reset_index(drop=True)
+
+                    deleted_rows = before_count - len(merged_df)
                     
                     if not merged_df.empty and "event_id" in merged_df.columns and "ルームID" in merged_df.columns:
                         keep_mask = merged_df.apply(keep_row, axis=1)
