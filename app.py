@@ -754,7 +754,7 @@ if is_admin:
                     target_room_ids = set(target_room_ids_str) if target_room_ids_str else None
                     
                     if target_room_ids:
-                        st.info(f"✅ 対象ルーム指定ありで更新します: {', '.join(target_room_ids)}")
+                        st.info(f"✅ 対象ルームを指定して更新します: {', '.join(target_room_ids)}")
                     else:
                         st.info("📡 全ルーム対象で更新します。")
 
