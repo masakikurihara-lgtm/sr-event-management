@@ -425,8 +425,7 @@ if not do_show:
 # 🎯 常に最新CSVを取得する（セッションキャッシュを無効化）
 if st.session_state.get("refresh_trigger", False) or "df_all" not in st.session_state:
     #df_all = load_event_db(EVENT_DB_URL)
-#    df_all = load_event_db(EVENT_DB_ACTIVE_URL)
-    df_all = load_event_db_fast(EVENT_DB_ACTIVE_URL, days=10, full_load=bool(st.session_state.get("admin_full_data", False)))
+    df_all = load_event_db(EVENT_DB_ACTIVE_URL)
     st.session_state.df_all = df_all
     st.session_state.refresh_trigger = False
 else:
