@@ -132,61 +132,6 @@ def load_event_db(url):
         df[c] = df[c].replace('', np.nan).fillna('')
     return df
 
-# ----- 追加する関数（非侵襲） -----
-def load_event_db_fast(url, days=10):
-    """
-    管理者モードの初期表示用に限定的にCSVを読み込む軽量ローダ。
-    - 終了日時が空 または cutoff（JST 現在 - days）以降 の行のみを収集して返す。
-    - 返却 DataFrame のカラム名は既存と互換となるよう補完する。
-    - この関数は st.session_state を参照しない（呼び出し側でフラグを渡す想定）。
-    """
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=12)
-        r.raise_for_status()
-        txt = r.content.decode("utf-8-sig")
-    except Exception as e:
-        # 失敗時は空DF（既存の挙動を壊さない）
-        return pd.DataFrame()
-
-    cutoff_date = (datetime.now(JST) - timedelta(days=days)).strftime("%Y/%m/%d")
-    # chunksizeで分割して読み、条件一致行のみを集める
-    try:
-        chunks = pd.read_csv(io.StringIO(txt), dtype=object, keep_default_na=False, chunksize=2000)
-    except Exception:
-        return pd.DataFrame()
-
-    parts = []
-    for chunk in chunks:
-        if "終了日時" not in chunk.columns:
-            continue
-        chunk = chunk.fillna("")
-        # 終了日時が空 OR 文字列で cutoff_date 以上（CSVの 'YYYY/MM/DD' 比較前提）
-        mask = (chunk["終了日時"].astype(str) == "") | (chunk["終了日時"].astype(str) >= cutoff_date)
-        sub = chunk.loc[mask]
-        if not sub.empty:
-            parts.append(sub)
-
-    if parts:
-        df_sub = pd.concat(parts, ignore_index=True)
-    else:
-        df_sub = pd.DataFrame()
-
-    # カラム名整形（既存互換）
-    if not df_sub.empty:
-        df_sub.columns = [c.replace("_fmt", "").strip() for c in df_sub.columns]
-
-    expected_cols = ["event_id", "URL", "ルームID", "イベント名", "開始日時", "終了日時",
-                     "順位", "ポイント", "レベル", "ライバー名"]
-    for c in expected_cols:
-        if c not in df_sub.columns:
-            df_sub[c] = ""
-        if not df_sub.empty:
-            df_sub[c] = df_sub[c].replace('', np.nan).fillna('')
-
-    return df_sub
-# ----- 追加ここまで -----
-
-
 
 def get_room_name(room_id):
     data = http_get_json(API_ROOM_PROFILE, params={"room_id": room_id})
@@ -440,16 +385,8 @@ if is_admin:
     # --- 管理者モードのデータ処理 ---
     # st.info(f"**管理者モード**") # ← 削除 (ユーザー要望)
 
-    # 1. 管理者向け：デフォルト表示（admin_full_data == False）の場合は軽量ローダで限定読み込み
-    if not st.session_state.get("admin_full_data", False):
-        # admin の初期表示は「最近10日以内に終了 or 終了日時が空欄」のみを扱う軽量DataFrameを使う
-        df = load_event_db_fast(EVENT_DB_ACTIVE_URL, days=10)
-        # 万一CSV取得エラーや空の場合は既存 df_all にフォールバック（安全策）
-        if df.empty:
-            df = df_all.copy()
-    else:
-        # 全量表示ON（既存と完全互換）
-        df = df_all.copy()
+    # 1. 日付整形とタイムスタンプ追加 (全量)
+    df = df_all.copy()
     df["開始日時"] = df["開始日時"].apply(fmt_time)
     df["終了日時"] = df["終了日時"].apply(fmt_time)
     df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
