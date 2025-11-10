@@ -865,7 +865,7 @@ if is_admin:
 
                     # --- ソート・保存（変更なし） ---
                     merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
-                    merged_df.sort_values(["ended_at_num", "event_id_num", "ルームID"], ascending=[False, True], inplace=True)
+                    merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
                     merged_df.drop(columns=["event_id_num"], inplace=True)
 
                     csv_bytes = merged_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
