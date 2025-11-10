@@ -424,18 +424,18 @@ if is_admin:
 
     # ★★★ 修正 (5. 開催中イベント最新化) - API更新ブロック ★★★
     if is_admin or st.session_state.get('refresh_trigger', False):
-        ongoing = df[df["is_ongoing"]] 
-        
-        for idx, row in ongoing.iterrows():
-            event_id = row.get("event_id")
-            room_id_to_update = row.get("ルームID")
-            stats = get_event_stats_from_roomlist(event_id, room_id_to_update)
-            if stats:
-                # 📌 API更新は、永続キャッシュ(st.session_state.df_all)に対して行う
-                st.session_state.df_all.at[idx, "順位"] = stats.get("rank") or "-"
-                st.session_state.df_all.at[idx, "ポイント"] = stats.get("point") or 0
-                st.session_state.df_all.at[idx, "レベル"] = stats.get("quest_level") or 0
-            time.sleep(0.1) # ★★★ 最終修正: ブロッキング待機時間を削除 ★★★
+        #ongoing = df[df["is_ongoing"]] 
+        #
+        #for idx, row in ongoing.iterrows():
+        #    event_id = row.get("event_id")
+        #    room_id_to_update = row.get("ルームID")
+        #    stats = get_event_stats_from_roomlist(event_id, room_id_to_update)
+        #    if stats:
+        #        # 📌 API更新は、永続キャッシュ(st.session_state.df_all)に対して行う
+        #        st.session_state.df_all.at[idx, "順位"] = stats.get("rank") or "-"
+        #        st.session_state.df_all.at[idx, "ポイント"] = stats.get("point") or 0
+        #        st.session_state.df_all.at[idx, "レベル"] = stats.get("quest_level") or 0
+        #    time.sleep(0.1) # ★★★ 最終修正: ブロッキング待機時間を削除 ★★★
         
         st.session_state.refresh_trigger = False
         
