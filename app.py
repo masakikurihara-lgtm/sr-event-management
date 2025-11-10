@@ -362,6 +362,8 @@ if not do_show:
 # データ取得 (スクリプト先頭付近のブロック)
 # ----------------------------------------------------------------------
 
+import time # ★★★ この行をファイルの先頭に追加してください ★★★
+
 # 🎯 常に最新CSVを取得する（セッションキャッシュを無効化）
 if st.session_state.get("refresh_trigger", False) or "df_all" not in st.session_state:
     df_all = load_event_db(EVENT_DB_ACTIVE_URL)
@@ -389,10 +391,7 @@ df_all = st.session_state.df_all.copy() # キャッシュデータをコピー
 if is_admin:
     # --- 管理者モードのデータ処理 ---
     
-    # 1. データ絞り込み (最初に実行)
-    # df_allはTS列を含む（3500行）
-    
-    # ★★★ 修正3-A: 管理者モードのデフォルト絞り込みを先に実行する ★★★
+    # 1. データ絞り込み (約100件に絞り込む)
     if not st.session_state.admin_full_data:
         df_target = df_all[
             (df_all["__end_ts"].apply(lambda x: pd.notna(x) and x >= FILTER_END_DATE_TS_DEFAULT))
@@ -403,8 +402,7 @@ if is_admin:
         
     df = df_target.copy() # 約100件の df を作成
     
-    # ★★★ 最終修正: インデックスをリセットし、データフレームのオーバーヘッドを軽減する ★★★
-    # これにより、後の loc[df.index] による非効率なインデックス参照を排除する
+    # 元のインデックスを保持
     df = df.reset_index(drop=False).rename(columns={'index': '__original_index'})
 
 
@@ -412,21 +410,21 @@ if is_admin:
     df["開始日時"] = df["開始日時"].apply(fmt_time) 
     df["終了日時"] = df["終了日時"].apply(fmt_time) 
     
-    # TS列は既に存在するため、コピー（元のインデックスを使って df_all から参照する）
+    # TS列はキャッシュからコピー
     original_indices = df['__original_index']
     df["__start_ts"] = df_all.loc[original_indices, "__start_ts"].values
     df["__end_ts"] = df_all.loc[original_indices, "__end_ts"].values
     
-    # 2. 開催中判定
+    # 3. 開催中判定
     now_ts = int(datetime.now(JST).timestamp())
     today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
     df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts - 3600)
 
     df["is_end_today"] = df["__end_ts"].apply(lambda x: pd.notna(x) and today_ts <= x < (today_ts + 86400))
 
-    # ★★★ 修正 (5. 開催中イベント最新化) - 自動最新化/ボタン最新化をここで実行 ★★★
+    # ★★★ 修正 (5. 開催中イベント最新化) - API更新ブロック ★★★
     if is_admin or st.session_state.get('refresh_trigger', False):
-        ongoing = df[df["is_ongoing"]] # 絞り込まれた df から抽出 (十数件〜数十件)
+        ongoing = df[df["is_ongoing"]] 
         
         for idx, row in ongoing.iterrows():
             event_id = row.get("event_id")
@@ -437,16 +435,22 @@ if is_admin:
                 st.session_state.df_all.at[idx, "順位"] = stats.get("rank") or "-"
                 st.session_state.df_all.at[idx, "ポイント"] = stats.get("point") or 0
                 st.session_state.df_all.at[idx, "レベル"] = stats.get("quest_level") or 0
-            time.sleep(0.1) # API負荷軽減
+            time.sleep(0.1) # ★★★ 最終修正: ブロッキング待機時間を削除 ★★★
         
         st.session_state.refresh_trigger = False
         
-        # ★★★ 修正2-B: 単一フィルタ設計：全量データ再ロードと重いTS再計算を排除 ★★★
-        updated_indices = ongoing.index 
-        for col in ["順位", "ポイント", "レベル"]:
-            # 絞られた df に対して、永続キャッシュから更新されたデータのみを反映
-            df.loc[updated_indices, col] = st.session_state.df_all.loc[updated_indices, col]
+        # ★★★ 修正4: データ反映の最適化 - 順位/ポイントを df_all から df へコピー ★★★
+        # APIで更新された df_all の値を df に効率的に反映させる
+        updated_cols = ["順位", "ポイント", "レベル"]
         
+        # df のインデックス（0, 1, 2...）を基に、元の df_all のインデックスを取得
+        current_indices = df['__original_index'] 
+        
+        for col in updated_cols:
+             # df の該当する列を、df_all の更新された値で上書きする
+             # loc + values を使用して、Pandasのインデックス参照オーバーヘッドを回避
+             df[col] = st.session_state.df_all.loc[current_indices, col].values 
+
         # 開催中フラグの再計算のみ実行
         now_ts = int(datetime.now(JST).timestamp())
         today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
@@ -458,7 +462,7 @@ if is_admin:
 
 
     # 4. フィルタリングの適用（最終フィルタリングまで）
-    df_filtered = df.copy()
+    df_filtered = df.copy() 
 
     # 2023年9月1日以降に開始のイベントに限定（ライバーモードと同じ基準）
     df_filtered = df_filtered[
