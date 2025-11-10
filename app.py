@@ -133,6 +133,52 @@ def load_event_db(url):
     return df
 
 
+# =========================================================
+# 管理者モード専用：軽量ロード関数
+# =========================================================
+def load_event_db_partial(url, days_limit=10):
+    """終了日時が days_limit 日前以降の行のみを読み込む軽量ローダ（管理者専用）"""
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=10)
+        r.raise_for_status()
+        text = r.content.decode("utf-8-sig")
+        lines = text.splitlines()
+        if not lines:
+            return pd.DataFrame()
+
+        header = lines[0]
+        header_cols = [h.strip() for h in header.split(",")]
+        if "終了日時" not in header_cols:
+            # 安全策: 列が見つからない場合は全件読込
+            return pd.read_csv(io.StringIO(text), dtype=object, keep_default_na=False)
+
+        end_idx = header_cols.index("終了日時")
+        now_ts = int(datetime.now(JST).timestamp())
+        threshold_ts = now_ts - (days_limit * 86400)
+
+        # 終了日時が新しい行だけ残す
+        filtered_lines = [header]
+        for line in lines[1:]:
+            parts = line.split(",")
+            if len(parts) <= end_idx:
+                continue
+            end_raw = parts[end_idx].strip()
+            end_ts = parse_to_ts(end_raw)
+            # 終了日時がない（空欄）または10日以内なら残す
+            if not end_ts or end_ts >= threshold_ts:
+                filtered_lines.append(line)
+            else:
+                # ファイルは終了日時順にソートされているので、古くなったら打ち切り
+                break
+
+        df = pd.read_csv(io.StringIO("\n".join(filtered_lines)), dtype=object, keep_default_na=False)
+        return df
+    except Exception as e:
+        print(f"[load_event_db_partial] 軽量読み込み失敗: {e}")
+        return pd.DataFrame()
+
+
+
 def get_room_name(room_id):
     data = http_get_json(API_ROOM_PROFILE, params={"room_id": room_id})
     if data and isinstance(data, dict):
@@ -358,84 +404,18 @@ if not do_show:
     st.stop()
 
 # ----------------------------------------------------------------------
-# データ取得（管理者モードのみ部分読み込み対応）
+# データ取得
 # ----------------------------------------------------------------------
 
-def load_event_db_partial(url, days_limit=10):
-    """終了日時が days_limit 日前以降の行のみを読み込む軽量ローダ（列名保証版）"""
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=10)
-        r.raise_for_status()
-        text = r.content.decode("utf-8-sig")
-
-        lines = text.splitlines()
-        if not lines:
-            return pd.DataFrame()
-
-        header = lines[0]
-        header_cols = [h.strip() for h in header.split(",")]
-
-        # 安全策: 終了日時が存在しない場合は全件
-        if "終了日時" not in header_cols:
-            df = pd.read_csv(io.StringIO(text), dtype=object, keep_default_na=False)
-            return df
-
-        end_idx = header_cols.index("終了日時")
-
-        now_ts = int(datetime.now(JST).timestamp())
-        threshold_ts = now_ts - (days_limit * 86400)
-
-        # 終了日時が新しい行だけ残す
-        filtered_lines = [header]
-        for line in lines[1:]:
-            parts = line.split(",")
-            if len(parts) <= end_idx:
-                continue
-            end_raw = parts[end_idx].strip()
-            end_ts = parse_to_ts(end_raw)
-            # 終了日時が欠損なら残す（開催中など）
-            if not end_ts or end_ts >= threshold_ts:
-                filtered_lines.append(line)
-            else:
-                # CSVが終了日時降順なので、古いものに達したら打ち切る
-                break
-
-        df_text = "\n".join(filtered_lines)
-        df = pd.read_csv(io.StringIO(df_text), dtype=object, keep_default_na=False)
-
-        # 列名を既存仕様に強制整形（欠落列を追加）
-        expected_cols = [
-            "event_id", "URL", "ルームID", "イベント名", "開始日時", "終了日時",
-            "順位", "ポイント", "レベル", "ライバー名"
-        ]
-        for c in expected_cols:
-            if c not in df.columns:
-                df[c] = ""
-
-        # 列順を統一
-        df = df[expected_cols]
-
-        return df
-
-    except Exception as e:
-        print(f"軽量読み込み失敗: {e}")
-        return pd.DataFrame()
-
-
-
-# 🎯 データ読み込み（管理者モードは軽量化）
+# 🎯 常に最新CSVを取得する（セッションキャッシュを無効化）
 if st.session_state.get("refresh_trigger", False) or "df_all" not in st.session_state:
-    if is_admin and not st.session_state.get("admin_full_data", False):
-        # 管理者モード：全量OFFなら部分読み込み
-        df_all = load_event_db_partial(EVENT_DB_ACTIVE_URL, days_limit=10)
-    else:
-        # 通常・登録ユーザー・ライバーモードは従来通り全件読み込み
-        df_all = load_event_db(EVENT_DB_ACTIVE_URL)
-
+    #df_all = load_event_db(EVENT_DB_URL)
+    df_all = load_event_db(EVENT_DB_ACTIVE_URL)
     st.session_state.df_all = df_all
     st.session_state.refresh_trigger = False
 else:
     df_all = st.session_state.df_all.copy()
+
 
 
 if st.session_state.df_all.empty:
@@ -448,11 +428,15 @@ df_all = st.session_state.df_all.copy() # コピーを使用して、元のセ�
 # ----------------------------------------------------------------------
 
 if is_admin:
-    # --- 管理者モードのデータ処理 ---
-    # st.info(f"**管理者モード**") # ← 削除 (ユーザー要望)
-
-    # 1. 日付整形とタイムスタンプ追加 (全量)
-    df = df_all.copy()
+    # --- 管理者モード専用：軽量ロード処理 ---
+    if not st.session_state.admin_full_data:
+        # 終了日時が10日前以降のみを読み込み
+        df = load_event_db_partial(EVENT_DB_ACTIVE_URL, days_limit=10)
+        if df.empty:
+            df = load_event_db(EVENT_DB_ACTIVE_URL)  # フォールバック安全策
+    else:
+        # 全量表示ONのときだけ全件読み込み
+        df = load_event_db(EVENT_DB_ACTIVE_URL)
     df["開始日時"] = df["開始日時"].apply(fmt_time)
     df["終了日時"] = df["終了日時"].apply(fmt_time)
     df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
