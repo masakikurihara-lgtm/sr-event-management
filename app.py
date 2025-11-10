@@ -444,7 +444,7 @@ if is_admin:
         updated_cols = ["順位", "ポイント", "レベル"]
         
         # df のインデックス（0, 1, 2...）を基に、元の df_all のインデックスを取得
-        current_indices = df['__original_index'] 
+        #current_indices = df['__original_index'] 
         
         for col in updated_cols:
              # df の該当する列を、df_all の更新された値で上書きする
