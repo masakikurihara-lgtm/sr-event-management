@@ -378,6 +378,27 @@ if st.session_state.df_all.empty:
 
 df_all = st.session_state.df_all.copy() # コピーを使用して、元のセッションデータを汚染しないようにする
 
+
+# ----------------------------------------------------------------------
+# ★★★ パフォーマンス改善のための管理者モード事前フィルタリング（追加）★★★
+# ----------------------------------------------------------------------
+if is_admin:
+    # 1. フィルタリングに必要な「終了日時タイムスタンプ」を一時的に計算
+    #    (parse_to_ts関数を利用。この列は管理者モード処理ブロック内で再度計算される)
+    df_all["__end_ts_temp"] = df_all["終了日時"].apply(parse_to_ts)
+    
+    # 2. 管理者モードのデフォルトフィルタ基準 (10日前) を先行適用
+    #    （全量表示トグルOFF時のデフォルトフィルタ相当）
+    df_all = df_all[
+        # __end_ts が有効な値で、かつ FILTER_END_DATE_TS_DEFAULT 以上であること
+        (df_all["__end_ts_temp"].apply(lambda x: pd.notna(x) and x >= FILTER_END_DATE_TS_DEFAULT))
+        | (df_all["__end_ts_temp"].isna()) # タイムスタンプに変換できない行も一応含める
+    ].copy()
+
+    # 3. 一時的に作成したタイムスタンプ列を削除 (後の処理で再計算されるため)
+    df_all = df_all.drop(columns=["__end_ts_temp"])
+
+
 # ----------------------------------------------------------------------
 # データのフィルタリングと整形 (管理者/ライバーで分岐)
 # ----------------------------------------------------------------------
@@ -578,12 +599,7 @@ if is_admin:
             end_id = st.number_input("スキャン終了イベントID", min_value=start_id, value=start_id + 500, step=1)
             max_workers = st.number_input("並列処理数", min_value=1, max_value=30, value=3)
             save_interval = st.number_input("途中保存間隔（件）", min_value=50, value=300, step=50)
-            #ftp_path = st.text_input("FTP保存パス", value="/mksoul-pro.com/showroom/file/event_database.csv")
-            #ftp_path = "/mksoul-pro.com/showroom/file/event_database.csv"
-            #st.caption(f"📂 FTP保存先: {ftp_path}")
 
-            # === REPLACE START ===
-            # (このブロックを既存の「データベース更新実行」周りのコードと入れ替えてください)
 
             # ------------------------------------------------------------
             # ✨追加：特定ルーム限定更新機能
@@ -815,18 +831,6 @@ if is_admin:
                             merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
                             added_rows += 1
                     
-                    # --- 不要行削除ロジック（変更なし） ---
-                    #scanned_event_ids = set(map(str, event_id_range))
-                    #new_pairs = set(df_new[["event_id", "ルームID"]].apply(lambda r: (str(r["event_id"]), str(r["ルームID"])), axis=1).tolist())
-                    #
-                    #before_count = len(merged_df)
-                    #def keep_row(row):
-                    #    eid = str(row.get("event_id"))
-                    #    rid = str(row.get("ルームID"))
-                    #    if eid not in scanned_event_ids:
-                    #        return True
-                    #    return (eid, rid) in new_pairs
-
                     # --- 不要行削除ロジック（修正版） ---
                     scanned_event_ids = set(map(str, event_id_range))
                     new_pairs = set(
