@@ -450,10 +450,16 @@ if is_admin:
     else:
         # 全量表示ON（既存と完全互換）
         df = df_all.copy()
-    df["開始日時"] = df["開始日時"].apply(fmt_time)
-    df["終了日時"] = df["終了日時"].apply(fmt_time)
-    df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
-    df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
+    #df["開始日時"] = df["開始日時"].apply(fmt_time)
+    #df["終了日時"] = df["終了日時"].apply(fmt_time)
+    #df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
+    #df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
+
+    # 日付整形とタイムスタンプ追加（ベクトル処理版）
+    df["開始日時"] = pd.to_datetime(df["開始日時"], errors="coerce").dt.strftime("%Y/%m/%d %H:%M").fillna("")
+    df["終了日時"] = pd.to_datetime(df["終了日時"], errors="coerce").dt.strftime("%Y/%m/%d %H:%M").fillna("")
+    df["__start_ts"] = pd.to_datetime(df["開始日時"], errors="coerce").astype("int64") // 10**9
+    df["__end_ts"] = pd.to_datetime(df["終了日時"], errors="coerce").astype("int64") // 10**9
     
     # 2. 開催中判定
     now_ts = int(datetime.now(JST).timestamp())
