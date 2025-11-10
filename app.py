@@ -134,8 +134,6 @@ def load_event_db(url):
 
 
 
-
-
 def get_room_name(room_id):
     data = http_get_json(API_ROOM_PROFILE, params={"room_id": room_id})
     if data and isinstance(data, dict):
@@ -366,26 +364,12 @@ if not do_show:
 
 # 🎯 常に最新CSVを取得する（セッションキャッシュを無効化）
 if st.session_state.get("refresh_trigger", False) or "df_all" not in st.session_state:
+    #df_all = load_event_db(EVENT_DB_URL)
     df_all = load_event_db(EVENT_DB_ACTIVE_URL)
-
-    # ✅ 管理者モードのときだけ、終了日時10日前以降のイベントに事前絞り込み
-    if is_admin and not st.session_state.get("admin_full_data", False):
-        try:
-            df_all["終了日時_ts"] = df_all["終了日時"].apply(parse_to_ts)
-            df_all = df_all[
-                (df_all["終了日時_ts"].apply(lambda x: pd.notna(x) and x >= FILTER_END_DATE_TS_DEFAULT))
-                | (df_all["終了日時_ts"].isna())
-            ].copy()
-        except Exception as e:
-            print(f"[管理者モード軽量化スキップ] フィルタ処理中にエラー発生: {e}")
-            # エラーが起きたら全件読み込みにフォールバック
-            pass
-
     st.session_state.df_all = df_all
     st.session_state.refresh_trigger = False
 else:
     df_all = st.session_state.df_all.copy()
-
 
 
 
