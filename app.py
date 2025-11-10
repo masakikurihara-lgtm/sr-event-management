@@ -374,35 +374,13 @@ if st.session_state.get("refresh_trigger", False) or "df_all" not in st.session_
     st.session_state.df_all = df_all # TS列を含むデータフレームをキャッシュ
     st.session_state.refresh_trigger = False
 else:
-    df_all = st.session_state.df_all.copy() # df_allはTS列を含む（3500行）
+    df_all = st.session_state.df_all.copy() # df_allはTS列とポイント更新を含む（3500行）
 
 
 if st.session_state.df_all.empty:
     st.stop()
 
 df_all = st.session_state.df_all.copy() # キャッシュデータをコピー
-
-
-# ----------------------------------------------------------------------
-# ★★★ パフォーマンス改善のための管理者モード事前フィルタリング（追加）★★★
-# ----------------------------------------------------------------------
-# このブロックは不要になりましたが、お客様のコード構造を維持して修正します
-if is_admin:
-    # 1. フィルタリングに必要な「終了日時タイムスタンプ」を一時的に計算
-    #      (df_allは既に__end_tsを持つため、一時列の計算は不要、削除します)
-    # df_all["__end_ts_temp"] = df_all["終了日時"].apply(parse_to_ts) # ★★★ 削除 ★★★
-    
-    # 2. 管理者モードのデフォルトフィルタ基準 (10日前) を先行適用
-    #      （全量表示トグルOFF時のデフォルトフィルタ相当）
-    df_all = df_all[
-        # __end_ts_temp の代わりに、永続化された __end_ts を使用
-        (df_all["__end_ts"].apply(lambda x: pd.notna(x) and x >= FILTER_END_DATE_TS_DEFAULT))
-        | (df_all["__end_ts"].isna()) # タイムスタンプに変換できない行も一応含める
-    ].copy()
-
-    # 3. 一時的に作成したタイムスタンプ列を削除 (不要なので削除)
-    # df_all = df_all.drop(columns=["__end_ts_temp"]) # ★★★ 削除 ★★★
-
 
 # ----------------------------------------------------------------------
 # データのフィルタリングと整形 (管理者/ライバーで分岐)
@@ -411,18 +389,28 @@ if is_admin:
 if is_admin:
     # --- 管理者モードのデータ処理 ---
     
-    # 1. 日付整形とタイムスタンプ追加 
-    # (df_allは既に約100件に絞られているため、この重い処理も約100件に実行されます - FAST!)
-    df = df_all.copy()
+    # 1. 日付整形とタイムスタンプ追加 (TS計算は削除し、キャッシュからコピーする)
+    df = df_all.copy() # df_allはTS列を含む（3500行）
+    
+    # ★★★ 修正2-A: 管理者モードのデフォルト絞り込みをここで適用（3500行 → 約100行） ★★★
+    if not st.session_state.admin_full_data:
+        # 終了日時が10日前以降のイベントに絞り込み
+        df = df[
+            (df["__end_ts"].apply(lambda x: pd.notna(x) and x >= FILTER_END_DATE_TS_DEFAULT))
+            | (df["__end_ts"].isna()) # タイムスタンプに変換できない行も一応含める
+        ].copy()
+    
+    # 軽微な日時整形と、キャッシュされたTS列のコピー
     df["開始日時"] = df["開始日時"].apply(fmt_time)
     df["終了日時"] = df["終了日時"].apply(fmt_time)
-    df["__start_ts"] = df_all["__start_ts"] # ★★★ 修正2: TS計算の代わりに、df_allからコピー ★★★
-    df["__end_ts"] = df_all["__end_ts"]     # ★★★ 修正2: TS計算の代わりに、df_allからコピー ★★★   
-
+    # TS列は既に存在するため、再計算は不要（コピー）
+    df["__start_ts"] = df_all.loc[df.index, "__start_ts"] 
+    df["__end_ts"] = df_all.loc[df.index, "__end_ts"]
+    
     # 2. 開催中判定
     now_ts = int(datetime.now(JST).timestamp())
     today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-    df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts - 3600) # ★★★ 修正後 ★★★
+    df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts - 3600)
 
     df["is_end_today"] = df["__end_ts"].apply(lambda x: pd.notna(x) and today_ts <= x < (today_ts + 86400))
 
@@ -443,21 +431,13 @@ if is_admin:
         
         st.session_state.refresh_trigger = False
         
-        # ★★★ 修正箇所1: 致命的な全量データ再ロード（フィルタリングリセットの原因）を削除 ★★★
-        # df_all = st.session_state.df_all.copy()
-        # df = df_all.copy() # ← この行が df を3500件に戻し、パフォーマンスを悪化させていた
-        
-        # 代わりに、API更新の影響を受けた行のみを、全量キャッシュから現在の df に反映させる
+        # ★★★ 修正2-B: 単一フィルタ設計：全量データ再ロードと重いTS再計算を排除 ★★★
         updated_indices = ongoing.index 
         for col in ["順位", "ポイント", "レベル"]:
-            # 絞られた df に対して、永続キャッシュ(st.session_state.df_all)から更新されたデータのみを反映
+            # 絞られた df に対して、永続キャッシュから更新されたデータのみを反映
             df.loc[updated_indices, col] = st.session_state.df_all.loc[updated_indices, col]
         
-        # ★★★ 修正箇所2: 冗長で重いTS再計算を削除（データが更新されていないため） ★★★
-        # df["__start_ts"] = df["開始日時"].apply(parse_to_ts) # 削除
-        # df["__end_ts"] = df["終了日時"].apply(parse_to_ts)   # 削除
-
-        # 開催中フラグの再計算のみ、絞られた df（約100件）に対して実行 (時刻が進むため必須)
+        # 開催中フラグの再計算のみ実行
         now_ts = int(datetime.now(JST).timestamp())
         today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
         
@@ -467,7 +447,7 @@ if is_admin:
     # ★★★ 修正ブロック終了 ★★★
 
 
-    # 4. フィルタリングの適用（デフォルトフィルタリングまで）
+    # 4. フィルタリングの適用（最終フィルタリングまで）
     df_filtered = df.copy()
 
     # 2023年9月1日以降に開始のイベントに限定（ライバーモードと同じ基準）
@@ -480,11 +460,7 @@ if is_admin:
     # デフォルトフィルタリング（全量表示がOFFの場合）
     if not st.session_state.admin_full_data:
         # 終了日時が10日前以降のイベントに絞り込み
-        # ★★★ 修正箇所3: 最初のブロックで絞り込み済みのため、この冗長なフィルタリングは削除/無効化する ★★★
-        # df_filtered = df_filtered[
-        #     (df_filtered["__end_ts"].apply(lambda x: pd.notna(x) and x >= FILTER_END_DATE_TS_DEFAULT))
-        #     | (df_filtered["__end_ts"].isna()) # タイムスタンプに変換できない行も一応含める
-        # ].copy()
+        # ★★★ 修正2-C: 既にL300付近で適用済みのため、この冗長なフィルタリングは削除します ★★★
         pass
 
 
