@@ -863,10 +863,23 @@ if is_admin:
 
                     deleted_rows = before_count - len(merged_df)
 
-                    # --- ソート・保存（変更なし） ---
+                    # --- ソート・保存（終了日時を第一条件に追加） ---
+                    # 既存のevent_id_num計算を維持
                     merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
-                    merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
-                    merged_df.drop(columns=["event_id_num"], inplace=True)
+
+                    # 📌 修正点 1: 終了日時をタイムスタンプに変換して一時列(__end_ts)に追加（ソート用）
+                    merged_df["__end_ts"] = merged_df["終了日時"].apply(parse_to_ts)
+
+                    # 📌 修正点 2: 終了日時（__end_ts）を最優先の降順ソートキーにする
+                    # ソート順: [終了日時(降順), イベントID(降順), ルームID(昇順)]
+                    merged_df.sort_values(
+                        ["__end_ts", "event_id_num", "ルームID"], 
+                        ascending=[False, False, True], 
+                        inplace=True
+                    )
+
+                    # 📌 修正点 3: ソートに使用した一時列を削除
+                    merged_df.drop(columns=["event_id_num", "__end_ts"], inplace=True)
 
                     csv_bytes = merged_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
                     try:
