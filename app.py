@@ -440,26 +440,31 @@ if is_admin:
     # --- 管理者モードのデータ処理 ---
     # st.info(f"**管理者モード**") # ← 削除 (ユーザー要望)
 
-    # 1. 管理者向け：デフォルト表示（admin_full_data == False）の場合は軽量ローダで限定読み込み
+    # ✅ 【改善】まず event_database.csv の段階で「終了10日前以降 or 終了日時が空欄」のみに限定
+    df_pre = df_all.copy()
     if not st.session_state.get("admin_full_data", False):
-        # admin の初期表示は「最近10日以内に終了 or 終了日時が空欄」のみを扱う軽量DataFrameを使う
-        df = load_event_db_fast(EVENT_DB_ACTIVE_URL, days=10)
-        # 万一CSV取得エラーや空の場合は既存 df_all にフォールバック（安全策）
-        if df.empty:
-            df = df_all.copy()
-    else:
-        # 全量表示ON（既存と完全互換）
-        df = df_all.copy()
-    #df["開始日時"] = df["開始日時"].apply(fmt_time)
-    #df["終了日時"] = df["終了日時"].apply(fmt_time)
-    #df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
-    #df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
+        def safe_parse_end(x):
+            try:
+                return datetime.strptime(str(x).strip(), "%Y/%m/%d %H:%M").timestamp()
+            except Exception:
+                return None
 
-    # 日付整形とタイムスタンプ追加（ベクトル処理版）
-    df["開始日時"] = pd.to_datetime(df["開始日時"], errors="coerce").dt.strftime("%Y/%m/%d %H:%M").fillna("")
-    df["終了日時"] = pd.to_datetime(df["終了日時"], errors="coerce").dt.strftime("%Y/%m/%d %H:%M").fillna("")
-    df["__start_ts"] = pd.to_datetime(df["開始日時"], errors="coerce").astype("int64") // 10**9
-    df["__end_ts"] = pd.to_datetime(df["終了日時"], errors="coerce").astype("int64") // 10**9
+        df_pre["__end_ts"] = df_pre["終了日時"].apply(safe_parse_end)
+        df_pre = df_pre[
+            (df_pre["__end_ts"].apply(lambda x: x is None or x >= FILTER_END_DATE_TS_DEFAULT))
+        ].copy()
+    else:
+        df_pre = df_all.copy()
+
+    # この時点で対象は既に10日分程度に限定済み
+    df = df_pre.copy()
+
+    # ここから既存の整形処理（fmt_time, parse_to_ts など）はそのまま
+    df["開始日時"] = df["開始日時"].apply(fmt_time)
+    df["終了日時"] = df["終了日時"].apply(fmt_time)
+    df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
+    df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
+
     
     # 2. 開催中判定
     now_ts = int(datetime.now(JST).timestamp())
