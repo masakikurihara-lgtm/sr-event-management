@@ -444,12 +444,12 @@ if is_admin:
         updated_cols = ["順位", "ポイント", "レベル"]
         
         # df のインデックス（0, 1, 2...）を基に、元の df_all のインデックスを取得
-        #current_indices = df['__original_index'] 
+        current_indices = df['__original_index'] 
         
         for col in updated_cols:
              # df の該当する列を、df_all の更新された値で上書きする
              # loc + values を使用して、Pandasのインデックス参照オーバーヘッドを回避
-             df[col] = st.session_state.df_all.loc[current_indices, col].values 
+             #df[col] = st.session_state.df_all.loc[current_indices, col].values 
 
         # 開催中フラグの再計算のみ実行
         now_ts = int(datetime.now(JST).timestamp())
