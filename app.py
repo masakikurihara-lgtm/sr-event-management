@@ -361,27 +361,15 @@ if not do_show:
 # データ取得
 # ----------------------------------------------------------------------
 
-# 🎯 データ取得処理（管理者モードでは初期表示を軽量化）
+# 🎯 常に最新CSVを取得する（セッションキャッシュを無効化）
 if st.session_state.get("refresh_trigger", False) or "df_all" not in st.session_state:
-    if is_admin and not st.session_state.get("admin_full_data", False):
-        # 管理者モード & 全量表示OFF → 軽量読み込み
-        df_all = load_event_db(EVENT_DB_ACTIVE_URL)
-        if not df_all.empty:
-            # 終了日時をパースしてフィルタリング（10日前以降）
-            df_all["終了日時"] = df_all["終了日時"].apply(fmt_time)
-            df_all["__end_ts"] = df_all["終了日時"].apply(parse_to_ts)
-            df_all = df_all[
-                (df_all["__end_ts"].apply(lambda x: pd.notna(x) and x >= FILTER_END_DATE_TS_DEFAULT))
-                | (df_all["__end_ts"].isna())
-            ].copy()
-    else:
-        # 管理者全量表示ON または 通常/ライバーモード → 全件取得
-        df_all = load_event_db(EVENT_DB_ACTIVE_URL)
-
+    #df_all = load_event_db(EVENT_DB_URL)
+    df_all = load_event_db(EVENT_DB_ACTIVE_URL)
     st.session_state.df_all = df_all
     st.session_state.refresh_trigger = False
 else:
     df_all = st.session_state.df_all.copy()
+
 
 
 if st.session_state.df_all.empty:
