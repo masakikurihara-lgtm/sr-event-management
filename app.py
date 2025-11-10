@@ -411,7 +411,6 @@ else:
 
 
 
-
 if st.session_state.df_all.empty:
     st.stop()
 
