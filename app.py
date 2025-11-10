@@ -389,21 +389,28 @@ df_all = st.session_state.df_all.copy() # キャッシュデータをコピー
 if is_admin:
     # --- 管理者モードのデータ処理 ---
     
-    # 1. 日付整形とタイムスタンプ追加 (TS計算は削除し、キャッシュからコピーする)
-    df = df_all.copy() # df_allはTS列を含む（3500行）
+    # 1. データ絞り込み (最初に実行)
+    # df_allはTS列を含む（3500行）
     
-    # ★★★ 修正2-A: 管理者モードのデフォルト絞り込みをここで適用（3500行 → 約100行） ★★★
+    # ★★★ 修正3-A: 管理者モードのデフォルト絞り込みを先に実行する ★★★
+    # df_all (3500件) から df (約100件) に絞り込んでからコピーする
     if not st.session_state.admin_full_data:
         # 終了日時が10日前以降のイベントに絞り込み
-        df = df[
-            (df["__end_ts"].apply(lambda x: pd.notna(x) and x >= FILTER_END_DATE_TS_DEFAULT))
-            | (df["__end_ts"].isna()) # タイムスタンプに変換できない行も一応含める
-        ].copy()
+        df_target = df_all[
+            (df_all["__end_ts"].apply(lambda x: pd.notna(x) and x >= FILTER_END_DATE_TS_DEFAULT))
+            | (df_all["__end_ts"].isna()) # タイムスタンプに変換できない行も一応含める
+        ]
+    else:
+        df_target = df_all
+        
+    df = df_target.copy() # ★★★ 3500件のコピーを回避し、約100件の df を作成する ★★★
+
+    # 2. 日時整形とタイムスタンプ追加（約100件に対して実行される）
+    df["開始日時"] = df["開始日時"].apply(fmt_time) # ★★★ 重い整形処理が約100件に削減される ★★★
+    df["終了日時"] = df["終了日時"].apply(fmt_time) # ★★★ 重い整形処理が約100件に削減される ★★★
     
-    # 軽微な日時整形と、キャッシュされたTS列のコピー
-    df["開始日時"] = df["開始日時"].apply(fmt_time)
-    df["終了日時"] = df["終了日時"].apply(fmt_time)
-    # TS列は既に存在するため、再計算は不要（コピー）
+    # TS列は既に存在するため、コピー
+    # locでインデックスを揃えることで安全にコピー
     df["__start_ts"] = df_all.loc[df.index, "__start_ts"] 
     df["__end_ts"] = df_all.loc[df.index, "__end_ts"]
     
