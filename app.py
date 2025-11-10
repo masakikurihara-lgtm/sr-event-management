@@ -111,76 +111,26 @@ def parse_to_ts(val):
 
 
 def load_event_db(url):
-    """
-    既存仕様互換のまま高速化した load_event_db 実装。
-
-    - st.session_state.admin_full_data が True のときは従来どおり全件ロード。
-    - False のとき（デフォルト表示）にはチャンク読みで
-      '終了日時' が cutoff (JST 現在 - 10 days) 以降、または空欄の行のみを採用。
-    - 返却 DataFrame のカラム・欠損処理は現行コードに合わせて整備。
-    """
     try:
         r = requests.get(url, headers=HEADERS, timeout=12)
         r.raise_for_status()
         txt = r.content.decode("utf-8-sig")
+        # ★★★ 修正: dtype=str の代わりに、object型で読み込み、欠損値を' 'に置換 ★★★
+        # これは、後の処理でpandasの意図しない型変換を防ぐための防御的なコーディングです。
+        df = pd.read_csv(io.StringIO(txt), dtype=object, keep_default_na=False)
+        # pd.read_csv(io.StringIO(txt), dtype=str)
     except Exception as e:
-        # 元の挙動に合わせて DataFrame を返す（エラーは画面に直接出さない設計）
+        # st.error(f"イベントDB取得失敗: {e}") # ライバーモードの挙動に合わせ、エラー表示はしない
         return pd.DataFrame()
 
-    # 切替: 全量表示フラグを確認（Streamlit セッションステートを参照）
-    full_load = False
-    try:
-        # st はグローバルに import されている想定
-        full_load = bool(st.session_state.get("admin_full_data", False))
-    except Exception:
-        full_load = False
-
-    # 全件ロード（従来互換）
-    if full_load:
-        try:
-            df = pd.read_csv(io.StringIO(txt), dtype=object, keep_default_na=False)
-        except Exception:
-            # フォールバックで空DF
-            return pd.DataFrame()
-    else:
-        # 軽量チャンク読み込み（メモリ節約）
-        cutoff_date = (datetime.now(JST) - timedelta(days=10)).strftime("%Y/%m/%d")
-        chunks = pd.read_csv(io.StringIO(txt), dtype=object, keep_default_na=False, chunksize=2000)
-        collected = []
-        for chunk in chunks:
-            # 欄がない場合はスキップ（後で列を補完）
-            if "終了日時" not in chunk.columns:
-                continue
-            # 空文字で埋める（既存コード互換）
-            chunk = chunk.fillna("")
-            # 条件：
-            # - 終了日時が空文字（parse できない行などは保持する）
-            # - OR 終了日時文字列が cutoff_date 以上（= 10日以内）
-            # 比較は文字列形式 'YYYY/MM/DD' のまま >= で判定（現行CSV形式で動作します）
-            mask = (chunk["終了日時"].astype(str) == "") | (chunk["終了日時"].astype(str) >= cutoff_date)
-            filtered = chunk.loc[mask]
-            if not filtered.empty:
-                collected.append(filtered)
-        if collected:
-            df = pd.concat(collected, ignore_index=True)
-        else:
-            df = pd.DataFrame()
-
-    # カラム名の後処理は現行と同様に行う（"_fmt" の除去など）
-    try:
-        df.columns = [c.replace("_fmt", "").strip() for c in df.columns]
-    except Exception:
-        pass
-
-    # 既存コード互換のため、期待カラムを補完し空文字で埋める
+    df.columns = [c.replace("_fmt", "").strip() for c in df.columns]
     for c in ["event_id", "URL", "ルームID", "イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "ライバー名"]:
         if c not in df.columns:
+            # 存在しない列は空文字列で初期化
             df[c] = ""
-        # 欠損値を統一的に扱う（'' -> NaN -> '' にして安定化）
+        # 欠損値（空の文字列を含む）をNaNに変換し、NaNを空文字列に戻すことで処理を統一
         df[c] = df[c].replace('', np.nan).fillna('')
-
     return df
-
 
 
 def get_room_name(room_id):
