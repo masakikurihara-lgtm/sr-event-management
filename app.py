@@ -382,13 +382,14 @@ df_all = st.session_state.df_all.copy() # コピーを使用して、元のセ�
 # ----------------------------------------------------------------------
 # ★★★ パフォーマンス改善のための管理者モード事前フィルタリング（追加）★★★
 # ----------------------------------------------------------------------
+# このブロックで df_all は約100件に絞られます
 if is_admin:
     # 1. フィルタリングに必要な「終了日時タイムスタンプ」を一時的に計算
-    #    (parse_to_ts関数を利用。この列は管理者モード処理ブロック内で再度計算される)
+    #     (parse_to_ts関数を利用。この列は管理者モード処理ブロック内で再度計算される)
     df_all["__end_ts_temp"] = df_all["終了日時"].apply(parse_to_ts)
     
     # 2. 管理者モードのデフォルトフィルタ基準 (10日前) を先行適用
-    #    （全量表示トグルOFF時のデフォルトフィルタ相当）
+    #     （全量表示トグルOFF時のデフォルトフィルタ相当）
     df_all = df_all[
         # __end_ts が有効な値で、かつ FILTER_END_DATE_TS_DEFAULT 以上であること
         (df_all["__end_ts_temp"].apply(lambda x: pd.notna(x) and x >= FILTER_END_DATE_TS_DEFAULT))
@@ -405,9 +406,9 @@ if is_admin:
 
 if is_admin:
     # --- 管理者モードのデータ処理 ---
-    # st.info(f"**管理者モード**") # ← 削除 (ユーザー要望)
-
-    # 1. 日付整形とタイムスタンプ追加 (全量)
+    
+    # 1. 日付整形とタイムスタンプ追加 
+    # (df_allは既に約100件に絞られているため、この重い処理も約100件に実行されます - FAST!)
     df = df_all.copy()
     df["開始日時"] = df["開始日時"].apply(fmt_time)
     df["終了日時"] = df["終了日時"].apply(fmt_time)
@@ -417,43 +418,46 @@ if is_admin:
     # 2. 開催中判定
     now_ts = int(datetime.now(JST).timestamp())
     today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-    # 修正前: df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
     df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts - 3600) # ★★★ 修正後 ★★★
 
-    # 終了日時が当日（今日0時〜明日0時の間）の判定
     df["is_end_today"] = df["__end_ts"].apply(lambda x: pd.notna(x) and today_ts <= x < (today_ts + 86400))
 
     # ★★★ 修正 (5. 開催中イベント最新化) - 自動最新化/ボタン最新化をここで実行 ★★★
     if is_admin or st.session_state.get('refresh_trigger', False):
-        ongoing = df[df["is_ongoing"]] # df (フィルタ前の全データ) を使用
+        ongoing = df[df["is_ongoing"]] # 絞り込まれた df から抽出 (十数件〜数十件)
         
-        # with st.spinner("開催中イベントの順位/ポイントを最新化中..."): # ← 削除 (ユーザー要望)
         for idx, row in ongoing.iterrows():
             event_id = row.get("event_id")
             room_id_to_update = row.get("ルームID")
             stats = get_event_stats_from_roomlist(event_id, room_id_to_update)
             if stats:
+                # 📌 API更新は、永続キャッシュ(st.session_state.df_all)に対して行う
                 st.session_state.df_all.at[idx, "順位"] = stats.get("rank") or "-"
                 st.session_state.df_all.at[idx, "ポイント"] = stats.get("point") or 0
                 st.session_state.df_all.at[idx, "レベル"] = stats.get("quest_level") or 0
             time.sleep(0.1) # API負荷軽減
         
         st.session_state.refresh_trigger = False
-        # st.toast("終了前イベントの最新化が完了しました。", icon="✅") # ← 削除 (ユーザー要望)
         
-        # ★★★ 修正: st.session_state.df_all の更新を反映するため、df を再作成 ★★★
-        df_all = st.session_state.df_all.copy()
-        df = df_all.copy()
+        # ★★★ 修正箇所1: 致命的な全量データ再ロード（フィルタリングリセットの原因）を削除 ★★★
+        # df_all = st.session_state.df_all.copy()
+        # df = df_all.copy() # ← この行が df を3500件に戻し、パフォーマンスを悪化させていた
         
-        # 再度フラグ/TSを付ける (必須)
-        df["開始日時"] = df["開始日時"].apply(fmt_time)
-        df["終了日時"] = df["終了日時"].apply(fmt_time)
-        df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
-        df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
+        # 代わりに、API更新の影響を受けた行のみを、全量キャッシュから現在の df に反映させる
+        updated_indices = ongoing.index 
+        for col in ["順位", "ポイント", "レベル"]:
+            # 絞られた df に対して、永続キャッシュ(st.session_state.df_all)から更新されたデータのみを反映
+            df.loc[updated_indices, col] = st.session_state.df_all.loc[updated_indices, col]
+        
+        # ★★★ 修正箇所2: 冗長で重いTS再計算を削除（データが更新されていないため） ★★★
+        # df["__start_ts"] = df["開始日時"].apply(parse_to_ts) # 削除
+        # df["__end_ts"] = df["終了日時"].apply(parse_to_ts)   # 削除
+
+        # 開催中フラグの再計算のみ、絞られた df（約100件）に対して実行 (時刻が進むため必須)
         now_ts = int(datetime.now(JST).timestamp())
         today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        # 修正前: df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
-        df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts - 3600) # ★★★ 修正後 ★★★
+        
+        df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts - 3600) 
 
         df["is_end_today"] = df["__end_ts"].apply(lambda x: pd.notna(x) and today_ts <= x < (today_ts + 86400))
     # ★★★ 修正ブロック終了 ★★★
@@ -472,10 +476,13 @@ if is_admin:
     # デフォルトフィルタリング（全量表示がOFFの場合）
     if not st.session_state.admin_full_data:
         # 終了日時が10日前以降のイベントに絞り込み
-        df_filtered = df_filtered[
-            (df_filtered["__end_ts"].apply(lambda x: pd.notna(x) and x >= FILTER_END_DATE_TS_DEFAULT))
-            | (df_filtered["__end_ts"].isna()) # タイムスタンプに変換できない行も一応含める
-        ].copy()
+        # ★★★ 修正箇所3: 最初のブロックで絞り込み済みのため、この冗長なフィルタリングは削除/無効化する ★★★
+        # df_filtered = df_filtered[
+        #     (df_filtered["__end_ts"].apply(lambda x: pd.notna(x) and x >= FILTER_END_DATE_TS_DEFAULT))
+        #     | (df_filtered["__end_ts"].isna()) # タイムスタンプに変換できない行も一応含める
+        # ].copy()
+        pass
+
 
     # 終了日時フィルタリング用の選択肢生成
     unique_end_dates = sorted(
