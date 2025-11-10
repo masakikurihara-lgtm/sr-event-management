@@ -132,6 +132,67 @@ def load_event_db(url):
         df[c] = df[c].replace('', np.nan).fillna('')
     return df
 
+def load_event_db_fast(url, days=10, full_load=False):
+    """
+    軽量読み込み：
+    - full_load=True のときは従来どおり全件 pd.read_csv を使用して DataFrame を返す（完全互換）。
+    - full_load=False のときは CSV をチャンク読み (chunksize=2000) し、
+      「終了日時」カラムが空欄の行または cutoff_date 以降（= days 日以内）の行だけを収集して返す。
+    - この関数は st.session_state を参照しません（呼び出し側でフラグを渡す設計）。
+    """
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=12)
+        r.raise_for_status()
+        txt = r.content.decode("utf-8-sig")
+    except Exception:
+        return pd.DataFrame()
+
+    if full_load:
+        try:
+            df = pd.read_csv(io.StringIO(txt), dtype=object, keep_default_na=False)
+        except Exception:
+            return pd.DataFrame()
+        df.columns = [c.replace("_fmt", "").strip() for c in df.columns]
+        for c in ["event_id", "URL", "ルームID", "イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "ライバー名"]:
+            if c not in df.columns:
+                df[c] = ""
+            df[c] = df[c].replace('', np.nan).fillna('')
+        return df
+
+    # 軽量パス（チャンク読み）
+    cutoff_date = (datetime.now(JST) - timedelta(days=days)).strftime("%Y/%m/%d")
+    try:
+        chunks = pd.read_csv(io.StringIO(txt), dtype=object, keep_default_na=False, chunksize=2000)
+    except Exception:
+        return pd.DataFrame()
+
+    collected = []
+    for chunk in chunks:
+        if "終了日時" not in chunk.columns:
+            continue
+        chunk = chunk.fillna("")
+        # 終了日時が空欄、または文字列で cutoff_date 以上（YYYY/MM/DD の文字列比較を前提）
+        mask = (chunk["終了日時"].astype(str) == "") | (chunk["終了日時"].astype(str) >= cutoff_date)
+        filtered = chunk.loc[mask]
+        if not filtered.empty:
+            collected.append(filtered)
+
+    if collected:
+        df = pd.concat(collected, ignore_index=True)
+    else:
+        df = pd.DataFrame()
+
+    if not df.empty:
+        df.columns = [c.replace("_fmt", "").strip() for c in df.columns]
+    # 欠損コラム補完（既存互換）
+    for c in ["event_id", "URL", "ルームID", "イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "ライバー名"]:
+        if c not in df.columns:
+            df[c] = ""
+        if not df.empty:
+            df[c] = df[c].replace('', np.nan).fillna('')
+    return df
+
+
 
 def get_room_name(room_id):
     data = http_get_json(API_ROOM_PROFILE, params={"room_id": room_id})
@@ -364,7 +425,8 @@ if not do_show:
 # 🎯 常に最新CSVを取得する（セッションキャッシュを無効化）
 if st.session_state.get("refresh_trigger", False) or "df_all" not in st.session_state:
     #df_all = load_event_db(EVENT_DB_URL)
-    df_all = load_event_db(EVENT_DB_ACTIVE_URL)
+#    df_all = load_event_db(EVENT_DB_ACTIVE_URL)
+    df_all = load_event_db_fast(EVENT_DB_ACTIVE_URL, days=10, full_load=bool(st.session_state.get("admin_full_data", False)))
     st.session_state.df_all = df_all
     st.session_state.refresh_trigger = False
 else:
