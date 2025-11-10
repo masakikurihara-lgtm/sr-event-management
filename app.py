@@ -427,7 +427,7 @@ if is_admin:
                 st.session_state.df_all.at[idx, "順位"] = stats.get("rank") or "-"
                 st.session_state.df_all.at[idx, "ポイント"] = stats.get("point") or 0
                 st.session_state.df_all.at[idx, "レベル"] = stats.get("quest_level") or 0
-            time.sleep(0.1) # API負荷軽減
+            # time.sleep(0.1) # API負荷軽減
         
         st.session_state.refresh_trigger = False
         
