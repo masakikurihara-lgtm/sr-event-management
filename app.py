@@ -358,18 +358,53 @@ if not do_show:
     st.stop()
 
 # ----------------------------------------------------------------------
-# データ取得
+# データ取得（管理者モードのみ部分読み込み対応）
 # ----------------------------------------------------------------------
 
-# 🎯 常に最新CSVを取得する（セッションキャッシュを無効化）
+def load_event_db_partial(url, days_limit=10):
+    """終了日時が days_limit 日前以降の行のみを読み込む軽量ローダ"""
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=10)
+        r.raise_for_status()
+        lines = r.text.splitlines()
+        header = lines[0]
+        recent_lines = [header]
+        now_ts = int(datetime.now(JST).timestamp())
+        threshold_ts = now_ts - (days_limit * 86400)
+
+        for line in lines[1:]:
+            # 「終了日時」が10日前より古ければ読み込みを打ち切る（CSVは終了日時降順）
+            cols = line.split(',')
+            if len(cols) < 6:
+                continue
+            end_raw = cols[5].strip()  # 終了日時列
+            end_ts = parse_to_ts(end_raw)
+            if end_ts and end_ts < threshold_ts:
+                break
+            recent_lines.append(line)
+
+        txt = "\n".join(recent_lines)
+        df = pd.read_csv(io.StringIO(txt), dtype=object, keep_default_na=False)
+        return df
+    except Exception as e:
+        log_msg = f"軽量読み込み失敗: {e}"
+        print(log_msg)
+        return pd.DataFrame()
+
+
+# 🎯 データ読み込み（管理者モードは軽量化）
 if st.session_state.get("refresh_trigger", False) or "df_all" not in st.session_state:
-    #df_all = load_event_db(EVENT_DB_URL)
-    df_all = load_event_db(EVENT_DB_ACTIVE_URL)
+    if is_admin and not st.session_state.get("admin_full_data", False):
+        # 管理者モード：全量OFFなら部分読み込み
+        df_all = load_event_db_partial(EVENT_DB_ACTIVE_URL, days_limit=10)
+    else:
+        # 通常・登録ユーザー・ライバーモードは従来通り全件読み込み
+        df_all = load_event_db(EVENT_DB_ACTIVE_URL)
+
     st.session_state.df_all = df_all
     st.session_state.refresh_trigger = False
 else:
     df_all = st.session_state.df_all.copy()
-
 
 
 if st.session_state.df_all.empty:
