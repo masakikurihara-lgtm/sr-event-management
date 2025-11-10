@@ -133,49 +133,6 @@ def load_event_db(url):
     return df
 
 
-# =========================================================
-# 管理者モード専用：軽量ロード関数
-# =========================================================
-def load_event_db_partial(url, days_limit=10):
-    """終了日時が days_limit 日前以降の行のみを読み込む軽量ローダ（管理者専用）"""
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=10)
-        r.raise_for_status()
-        text = r.content.decode("utf-8-sig")
-        lines = text.splitlines()
-        if not lines:
-            return pd.DataFrame()
-
-        header = lines[0]
-        header_cols = [h.strip() for h in header.split(",")]
-        if "終了日時" not in header_cols:
-            # 安全策: 列が見つからない場合は全件読込
-            return pd.read_csv(io.StringIO(text), dtype=object, keep_default_na=False)
-
-        end_idx = header_cols.index("終了日時")
-        now_ts = int(datetime.now(JST).timestamp())
-        threshold_ts = now_ts - (days_limit * 86400)
-
-        # 終了日時が新しい行だけ残す
-        filtered_lines = [header]
-        for line in lines[1:]:
-            parts = line.split(",")
-            if len(parts) <= end_idx:
-                continue
-            end_raw = parts[end_idx].strip()
-            end_ts = parse_to_ts(end_raw)
-            # 終了日時がない（空欄）または10日以内なら残す
-            if not end_ts or end_ts >= threshold_ts:
-                filtered_lines.append(line)
-            else:
-                # ファイルは終了日時順にソートされているので、古くなったら打ち切り
-                break
-
-        df = pd.read_csv(io.StringIO("\n".join(filtered_lines)), dtype=object, keep_default_na=False)
-        return df
-    except Exception as e:
-        print(f"[load_event_db_partial] 軽量読み込み失敗: {e}")
-        return pd.DataFrame()
 
 
 
@@ -409,12 +366,26 @@ if not do_show:
 
 # 🎯 常に最新CSVを取得する（セッションキャッシュを無効化）
 if st.session_state.get("refresh_trigger", False) or "df_all" not in st.session_state:
-    #df_all = load_event_db(EVENT_DB_URL)
     df_all = load_event_db(EVENT_DB_ACTIVE_URL)
+
+    # ✅ 管理者モードのときだけ、終了日時10日前以降のイベントに事前絞り込み
+    if is_admin and not st.session_state.get("admin_full_data", False):
+        try:
+            df_all["終了日時_ts"] = df_all["終了日時"].apply(parse_to_ts)
+            df_all = df_all[
+                (df_all["終了日時_ts"].apply(lambda x: pd.notna(x) and x >= FILTER_END_DATE_TS_DEFAULT))
+                | (df_all["終了日時_ts"].isna())
+            ].copy()
+        except Exception as e:
+            print(f"[管理者モード軽量化スキップ] フィルタ処理中にエラー発生: {e}")
+            # エラーが起きたら全件読み込みにフォールバック
+            pass
+
     st.session_state.df_all = df_all
     st.session_state.refresh_trigger = False
 else:
     df_all = st.session_state.df_all.copy()
+
 
 
 
@@ -428,15 +399,11 @@ df_all = st.session_state.df_all.copy() # コピーを使用して、元のセ�
 # ----------------------------------------------------------------------
 
 if is_admin:
-    # --- 管理者モード専用：軽量ロード処理 ---
-    if not st.session_state.admin_full_data:
-        # 終了日時が10日前以降のみを読み込み
-        df = load_event_db_partial(EVENT_DB_ACTIVE_URL, days_limit=10)
-        if df.empty:
-            df = load_event_db(EVENT_DB_ACTIVE_URL)  # フォールバック安全策
-    else:
-        # 全量表示ONのときだけ全件読み込み
-        df = load_event_db(EVENT_DB_ACTIVE_URL)
+    # --- 管理者モードのデータ処理 ---
+    # st.info(f"**管理者モード**") # ← 削除 (ユーザー要望)
+
+    # 1. 日付整形とタイムスタンプ追加 (全量)
+    df = df_all.copy()
     df["開始日時"] = df["開始日時"].apply(fmt_time)
     df["終了日時"] = df["終了日時"].apply(fmt_time)
     df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
