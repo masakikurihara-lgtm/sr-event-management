@@ -362,34 +362,65 @@ if not do_show:
 # ----------------------------------------------------------------------
 
 def load_event_db_partial(url, days_limit=10):
-    """終了日時が days_limit 日前以降の行のみを読み込む軽量ローダ"""
+    """終了日時が days_limit 日前以降の行のみを読み込む軽量ローダ（列名保証版）"""
     try:
         r = requests.get(url, headers=HEADERS, timeout=10)
         r.raise_for_status()
-        lines = r.text.splitlines()
+        text = r.content.decode("utf-8-sig")
+
+        lines = text.splitlines()
+        if not lines:
+            return pd.DataFrame()
+
         header = lines[0]
-        recent_lines = [header]
+        header_cols = [h.strip() for h in header.split(",")]
+
+        # 安全策: 終了日時が存在しない場合は全件
+        if "終了日時" not in header_cols:
+            df = pd.read_csv(io.StringIO(text), dtype=object, keep_default_na=False)
+            return df
+
+        end_idx = header_cols.index("終了日時")
+
         now_ts = int(datetime.now(JST).timestamp())
         threshold_ts = now_ts - (days_limit * 86400)
 
+        # 終了日時が新しい行だけ残す
+        filtered_lines = [header]
         for line in lines[1:]:
-            # 「終了日時」が10日前より古ければ読み込みを打ち切る（CSVは終了日時降順）
-            cols = line.split(',')
-            if len(cols) < 6:
+            parts = line.split(",")
+            if len(parts) <= end_idx:
                 continue
-            end_raw = cols[5].strip()  # 終了日時列
+            end_raw = parts[end_idx].strip()
             end_ts = parse_to_ts(end_raw)
-            if end_ts and end_ts < threshold_ts:
+            # 終了日時が欠損なら残す（開催中など）
+            if not end_ts or end_ts >= threshold_ts:
+                filtered_lines.append(line)
+            else:
+                # CSVが終了日時降順なので、古いものに達したら打ち切る
                 break
-            recent_lines.append(line)
 
-        txt = "\n".join(recent_lines)
-        df = pd.read_csv(io.StringIO(txt), dtype=object, keep_default_na=False)
+        df_text = "\n".join(filtered_lines)
+        df = pd.read_csv(io.StringIO(df_text), dtype=object, keep_default_na=False)
+
+        # 列名を既存仕様に強制整形（欠落列を追加）
+        expected_cols = [
+            "event_id", "URL", "ルームID", "イベント名", "開始日時", "終了日時",
+            "順位", "ポイント", "レベル", "ライバー名"
+        ]
+        for c in expected_cols:
+            if c not in df.columns:
+                df[c] = ""
+
+        # 列順を統一
+        df = df[expected_cols]
+
         return df
+
     except Exception as e:
-        log_msg = f"軽量読み込み失敗: {e}"
-        print(log_msg)
+        print(f"軽量読み込み失敗: {e}")
         return pd.DataFrame()
+
 
 
 # 🎯 データ読み込み（管理者モードは軽量化）
