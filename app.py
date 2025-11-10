@@ -1,1638 +1,1504 @@
 import streamlit as st
 import requests
+from datetime import datetime, timedelta
+import time
+import pytz
 import pandas as pd
 import io
-import time
-from datetime import datetime, timedelta
-import pytz
-import re # URL解析のためにreモジュールを追加
-import numpy as np # pandasでNaNを扱うために追記
-import logging
+import re
+import ftplib  # ✅ FTPアップロード機能用
+import concurrent.futures
 
-JST = pytz.timezone("Asia/Tokyo")
 
-EVENT_DB_URL = "https://mksoul-pro.com/showroom/file/event_database.csv"
-ROOM_LIST_URL = "https://mksoul-pro.com/showroom/file/room_list.csv"  #認証用
-EVENT_DB_ADD_URL = "https://mksoul-pro.com/showroom/file/event_database_add.csv"
-ROOM_LIST_ADD_URL = "https://mksoul-pro.com/showroom/file/room_list_add.csv"
-API_ROOM_PROFILE = "https://www.showroom-live.com/api/room/profile"
-API_ROOM_LIST = "https://www.showroom-live.com/api/event/room_list"
-HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; mksoul-view/1.4)"}
+# 日本時間(JST)のタイムゾーンを設定
+JST = pytz.timezone('Asia/Tokyo')
 
-if "authenticated" not in st.session_state:  #認証用
-    st.session_state.authenticated = False  #認証用
+# --- 定数定義 ---
+# APIリクエスト時に使用するヘッダー
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"}
+# イベント検索APIのURL
+API_EVENT_SEARCH_URL = "https://www.showroom-live.com/api/event/search"
+# イベントルームリストAPIのURL（参加ルーム数取得用）
+API_EVENT_ROOM_LIST_URL = "https://www.showroom-live.com/api/event/room_list"
+# SHOWROOMのイベントページのベースURL
+EVENT_PAGE_BASE_URL = "https://www.showroom-live.com/event/"
+# MKsoulルームリスト
+ROOM_LIST_URL = "https://mksoul-pro.com/showroom/file/room_list.csv"
+# 過去イベントデータファイルのURLを格納しているインデックスファイルのURL
+PAST_EVENT_INDEX_URL = "https://mksoul-pro.com/showroom/file/sr-event-archive-list-index.txt"
 
-st.set_page_config(page_title="SHOWROOM 参加イベントビューア", layout="wide")
 
-# --------------------
-# フィルタリング基準日（2023年9月1日 00:00:00 JST）のタイムスタンプ
-FILTER_START_TS = int(datetime(2023, 9, 1, 0, 0, 0, tzinfo=JST).timestamp())
-
-# 管理者モードのフィルタリング基準 (現在から10日前)
-FILTER_END_DATE_TS_DEFAULT = int((datetime.now(JST) - timedelta(days=10)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
-# --------------------
-
-# ---------- ポイントハイライト用のカラー定義 ----------
-HIGHLIGHT_COLORS = {
-    1: "background-color: #ff7f7f;", # 1位
-    2: "background-color: #ff9999;", # 2位
-    3: "background-color: #ffb2b2;", # 3位
-    4: "background-color: #ffcccc;", # 4位
-    5: "background-color: #ffe5e5;", # 5位
+# ===============================
+# 📱 共通レスポンシブCSS（スマホ／タブレット対応）
+# ===============================
+st.markdown("""
+<style>
+/* ---------- テーブル共通 ---------- */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
 }
-# ★★★ 管理者用: 終了日時当日のハイライトカラー ★★★
-END_TODAY_HIGHLIGHT = "background-color: #ffb2b2;" # 赤系
 
-# ---------- Utility ----------
-def http_get_json(url, params=None, retries=3, timeout=8, backoff=0.6):
-    for i in range(retries):
-        try:
-            r = requests.get(url, headers=HEADERS, params=params, timeout=timeout)
-            if r.status_code == 200:
-                return r.json()
-            if r.status_code in (404, 410):
-                return None
-            time.sleep(backoff * (i + 1))
-        except requests.RequestException:
-            time.sleep(backoff * (i + 1))
-    return None
+/* ---------- ボタンリンク ---------- */
+.rank-btn-link {
+    background: #0b57d0;
+    color: white !important;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 12px;
+}
+.rank-btn-link:hover {
+    background: #0949a8;
+}
+
+/* ---------- 横スクロール対応 ---------- */
+.table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    width: 100%;
+}
+
+/* ---------- スマホ・タブレット対応 ---------- */
+@media screen and (max-width: 1024px) {
+    table {
+        font-size: 12px !important;
+    }
+    th, td {
+        padding: 6px !important;
+    }
+    .rank-btn-link {
+        padding: 6px 8px !important;
+        font-size: 13px !important;
+    }
+    .table-wrapper {
+        overflow-x: auto !important;
+        display: block !important;
+    }
+    /* 固定幅で横スクロール可能にする */
+    .table-wrapper table {
+        width: 1080px !important;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
 
 
-def fmt_time(ts):
-    if ts is None or ts == "" or (isinstance(ts, float) and pd.isna(ts)):
-        return ""
-    if isinstance(ts, str) and "/" in ts:
-        ts_strip = ts.strip()
-        # まず時刻付き（ゼロ埋めなし）の形式でパースを試みる
-        try:
-            dt_obj = datetime.strptime(ts_strip, "%Y/%m/%d %H:%M")
-            return dt_obj.strftime("%Y/%m/%d %H:%M")
-        except ValueError:
-            # 時刻がない形式（ゼロ埋めなし）でパースを試みる
-            try:
-                dt_obj = datetime.strptime(ts_strip, "%Y/%m/%d")
-                return dt_obj.strftime("%Y/%m/%d 00:00")
-            except ValueError:
-                # どの形式でもパースできない場合は、元の文字列を返す
-                return ts_strip  
-    try:
-        ts = int(float(ts))
-        if ts > 20000000000:
-            ts = ts // 1000
-        # タイムスタンプからの変換は元々ゼロ埋め形式
-        return datetime.fromtimestamp(ts, JST).strftime("%Y/%m/%d %H:%M")
-    except Exception:
-        return ""
 
-
-def parse_to_ts(val):
-    if val is None or val == "":
+# --- ヘルパー: event_id 正規化関数（変更点） ---
+def normalize_event_id_val(val):
+    """
+    event_id の型ゆれ（数値、文字列、'123.0' など）を吸収して
+    一貫した文字列キーを返す。
+    戻り値: 正規化された文字列 (例: "123")、無効なら None を返す
+    """
+    if val is None:
         return None
     try:
-        ts = int(float(val))
-        if ts > 20000000000:
-            ts = ts // 1000
-        return ts
+        # numpy / pandas の数値型も扱えるよう float にして判定
+        # ただし 'abc' のような文字列はそのまま文字列化して返す
+        if isinstance(val, (int,)):
+            return str(val)
+        if isinstance(val, float):
+            if val.is_integer():
+                return str(int(val))
+            return str(val).strip()
+        s = str(val).strip()
+        # もし "123.0" のような表記なら整数に変換して整数表記で返す
+        if re.match(r'^\d+(\.0+)?$', s):
+            return str(int(float(s)))
+        # 普通の数字文字列やキー文字列はトリムしたものを返す
+        if s == "":
+            return None
+        return s
     except Exception:
-        pass
-    try:
-        # 時刻込みの形式を優先してパース
-        dt_obj_naive = datetime.strptime(val, "%Y/%m/%d %H:%M")
-        # ★★★ 修正: JSTとしてローカライズしてからタイムスタンプを取得 ★★★
-        return int(JST.localize(dt_obj_naive).timestamp())
-    except Exception:
-        # 日付のみの形式も試す (00:00:00 JSTとして処理)
         try:
-            dt_obj_naive = datetime.strptime(val, "%Y/%m/%d")
-            # ★★★ 修正: JSTとしてローカライズしてからタイムスタンプを取得 ★★★
-            return int(JST.localize(dt_obj_naive).timestamp())
+            return str(val).strip()
+        except Exception:
+            return None
+
+# --- データ取得関数 ---
+
+# --- FTPヘルパー関数群 ---
+def ftp_upload(file_path, content_bytes):
+    """FTPサーバーにファイルをアップロード"""
+    ftp_host = st.secrets["ftp"]["host"]
+    ftp_user = st.secrets["ftp"]["user"]
+    ftp_pass = st.secrets["ftp"]["password"]
+    with ftplib.FTP(ftp_host) as ftp:
+        ftp.login(ftp_user, ftp_pass)
+        with io.BytesIO(content_bytes) as f:
+            ftp.storbinary(f"STOR {file_path}", f)
+
+
+def ftp_download(file_path):
+    """FTPサーバーからファイルをダウンロード（存在しない場合はNone）"""
+    ftp_host = st.secrets["ftp"]["host"]
+    ftp_user = st.secrets["ftp"]["user"]
+    ftp_pass = st.secrets["ftp"]["password"]
+    with ftplib.FTP(ftp_host) as ftp:
+        ftp.login(ftp_user, ftp_pass)
+        buffer = io.BytesIO()
+        try:
+            ftp.retrbinary(f"RETR {file_path}", buffer.write)
+            buffer.seek(0)
+            return buffer.getvalue().decode('utf-8-sig')
         except Exception:
             return None
 
 
-def load_event_db(url):
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=12)
-        r.raise_for_status()
-        txt = r.content.decode("utf-8-sig")
-        # ★★★ 修正: dtype=str の代わりに、object型で読み込み、欠損値を' 'に置換 ★★★
-        # これは、後の処理でpandasの意図しない型変換を防ぐための防御的なコーディングです。
-        df = pd.read_csv(io.StringIO(txt), dtype=object, keep_default_na=False)
-        # pd.read_csv(io.StringIO(txt), dtype=str)
-    except Exception as e:
-        # st.error(f"イベントDB取得失敗: {e}") # ライバーモードの挙動に合わせ、エラー表示はしない
-        return pd.DataFrame()
+def update_archive_file():
+    """全イベントを取得→必要項目を抽出→重複除外→sr-event-archive.csvを上書き→ログ追記＋DL"""
+    JST = pytz.timezone('Asia/Tokyo')
+    now_str = datetime.now(JST).strftime("%Y/%m/%d %H:%M:%S")
 
-    df.columns = [c.replace("_fmt", "").strip() for c in df.columns]
-    for c in ["event_id", "URL", "ルームID", "イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "ライバー名"]:
-        if c not in df.columns:
-            # 存在しない列は空文字列で初期化
-            df[c] = ""
-        # 欠損値（空の文字列を含む）をNaNに変換し、NaNを空文字列に戻すことで処理を統一
-        df[c] = df[c].replace('', np.nan).fillna('')
-    return df
+    st.info("📡 イベントデータを取得中...")
+    statuses = [1, 3, 4]
+    new_events = get_events(statuses)
+
+    # ✅ 必要な9項目だけ抽出
+    filtered_events = []
+    for e in new_events:
+        try:
+            filtered_events.append({
+                "event_id": e.get("event_id"),
+                "is_event_block": e.get("is_event_block"),
+                "is_entry_scope_inner": e.get("is_entry_scope_inner"),
+                "event_name": e.get("event_name"),
+                "image_m": e.get("image_m"),
+                "started_at": e.get("started_at"),
+                "ended_at": e.get("ended_at"),
+                "event_url_key": e.get("event_url_key"),
+                "show_ranking": e.get("show_ranking")
+            })
+        except Exception:
+            continue
+
+    new_df = pd.DataFrame(filtered_events)
+    if new_df.empty:
+        st.warning("有効なイベントデータが取得できませんでした。")
+        return
+
+    # event_id正規化
+    new_df["event_id"] = new_df["event_id"].apply(normalize_event_id_val)
+    new_df.dropna(subset=["event_id"], inplace=True)
+    new_df.drop_duplicates(subset=["event_id"], inplace=True)
+
+    # 既存バックアップを取得
+    st.info("💾 FTPサーバー上の既存バックアップを取得中...")
+    existing_csv = ftp_download("/mksoul-pro.com/showroom/file/sr-event-archive.csv")
+    if existing_csv:
+        old_df = pd.read_csv(io.StringIO(existing_csv), dtype=str)
+        old_df["event_id"] = old_df["event_id"].apply(normalize_event_id_val)
+    else:
+        old_df = pd.DataFrame(columns=new_df.columns)
+
+    # 結合＋重複除外
+    merged_df = pd.concat([old_df, new_df], ignore_index=True)
+    before_count = len(old_df)
+    merged_df.drop_duplicates(subset=["event_id"], keep="last", inplace=True)
+    after_count = len(merged_df)
+    added_count = after_count - before_count  # ←このままでOK（マイナスも許容）
+
+    # 上書きアップロード
+    st.info("☁️ FTPサーバーへアップロード中...")
+    csv_bytes = merged_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+    ftp_upload("/mksoul-pro.com/showroom/file/sr-event-archive.csv", csv_bytes)
+
+    # ログ追記
+    log_text = f"[{now_str}] 更新完了: {added_count}件追加 / 合計 {after_count}件\n"
+    existing_log = ftp_download("/mksoul-pro.com/showroom/file/sr-event-archive-log.txt")
+    if existing_log:
+        log_text = existing_log + log_text
+    ftp_upload("/mksoul-pro.com/showroom/file/sr-event-archive-log.txt", log_text.encode("utf-8"))
+
+    st.success(f"✅ バックアップ更新完了: {added_count}件追加（合計 {after_count}件）")
+
+    # ✅ 更新完了後にダウンロードボタン追加
+    st.download_button(
+        label="📥 更新後のバックアップCSVをダウンロード",
+        data=csv_bytes,
+        file_name=f"sr-event-archive_{datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv",
+        mime="text/csv"
+    )
 
 
-def get_room_name(room_id):
-    data = http_get_json(API_ROOM_PROFILE, params={"room_id": room_id})
-    if data and isinstance(data, dict):
-        return data.get("room_name") or data.get("name") or ""
-    return ""
+if "authenticated" not in st.session_state:  #認証用
+    st.session_state.authenticated = False  #認証用
 
-
-# =========================================================
-# イベント情報（順位・ポイント・レベル）取得関数（全ページ対応版）
-# =========================================================
-def get_event_stats_from_roomlist(event_id, room_id):
+@st.cache_data(ttl=600)  # 10分間キャッシュを保持
+def get_events(statuses):
     """
-    指定イベント内の特定ルームの順位・ポイント・レベルを取得する。
-    全ページをスキャンして該当ルームを検索する。
+    指定されたステータスのイベントリストをAPIから取得します。
+    変更点: 各イベント辞書に取得元ステータスを示すキー '_fetched_status' を追加します。
     """
-    page = 1
-    found_entry = None
+    all_events = []
+    # 選択されたステータスごとにAPIを叩く
+    for status in statuses:
+        page = 1
+        # 1ステータスあたり最大20ページまで取得を試みる
+        for _ in range(20):
+            params = {"status": status, "page": page}
+            try:
+                response = requests.get(API_EVENT_SEARCH_URL, headers=HEADERS, params=params, timeout=10)
+                response.raise_for_status()  # HTTPエラーがあれば例外を発生
+                data = response.json()
 
-    while True:
-        data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": page})
-        if not data or "list" not in data:
-            break
+                # 'events' または 'event_list' キーからイベントリストを取得
+                page_events = data.get('events', data.get('event_list', []))
 
-        entries = data.get("list", [])
-        if not entries:
-            break
+                if not page_events:
+                    break  # イベントがなければループを抜ける
 
-        # 対象ルームを検索
-        for entry in entries:
-            rid = str(entry.get("room_id"))
-            if rid == str(room_id):
-                found_entry = entry
+                # --- ここが重要: 各イベントに取得元ステータスを注入 ---
+                for ev in page_events:
+                    try:
+                        # in-placeで書き込んでしまって問題ない想定
+                        ev['_fetched_status'] = status
+                    except Exception:
+                        pass
+
+                all_events.extend(page_events)
+                page += 1
+                time.sleep(0.1) # APIへの負荷を考慮して少し待機
+            except requests.exceptions.RequestException as e:
+                st.error(f"イベントデータ取得中にエラーが発生しました (status={status}): {e}")
                 break
-
-        # 見つかったら即終了
-        if found_entry:
-            break
-
-        # 次ページ判定
-        if not data.get("next_page") and len(entries) < 50:
-            break
-
-        page += 1
-        time.sleep(0.05)  # API負荷軽減
-
-    if not found_entry:
-        return None
-
-    # 結果を整形して返す
-    return {
-        "rank": found_entry.get("rank") or found_entry.get("position"),
-        "point": (
-            found_entry.get("point")
-            or found_entry.get("event_point")
-            or found_entry.get("total_point")
-        ),
-        "quest_level": (
-            found_entry.get("quest_level")
-            or (found_entry.get("event_entry", {}) or {}).get("quest_level")
-        ),
-    }
+            except ValueError:
+                st.error(f"APIからのJSONデコードに失敗しました (status={status})。")
+                break
+    return all_events
 
 
 
-# 貢献ランク取得関数は、今回は直接リンクを開くため既存ロジックとして残します。
-def fetch_contribution_rank(*args, **kwargs):
-    # 既存のロジックから変更なし
+@st.cache_data(ttl=600)
+def get_past_events_from_files():
+    """
+    終了(BU)チェック時に使用される過去イベントデータを取得。
+    これまでのインデックス方式ではなく、
+    固定ファイル https://mksoul-pro.com/showroom/file/sr-event-archive.csv を直接読み込む。
+    """
+    all_past_events = pd.DataFrame()
+    column_names = [
+        "event_id", "is_event_block", "is_entry_scope_inner", "event_name",
+        "image_m", "started_at", "ended_at", "event_url_key", "show_ranking"
+    ]
+
+    fixed_csv_url = "https://mksoul-pro.com/showroom/file/sr-event-archive.csv"
+
+    try:
+        response = requests.get(fixed_csv_url, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+        csv_text = response.content.decode('utf-8-sig')
+        csv_file_like_object = io.StringIO(csv_text)
+        df = pd.read_csv(csv_file_like_object, dtype=str)
+
+        # 列名チェック（足りない列があれば補う）
+        for col in column_names:
+            if col not in df.columns:
+                df[col] = None
+        df = df[column_names]  # 列順を揃える
+
+        # 型整形
+        df['is_entry_scope_inner'] = df['is_entry_scope_inner'].astype(str).str.lower().str.strip() == 'true'
+        df['started_at'] = pd.to_numeric(df['started_at'], errors='coerce')
+        df['ended_at'] = pd.to_numeric(df['ended_at'], errors='coerce')
+        df.dropna(subset=['started_at', 'ended_at'], inplace=True)
+        df['event_id'] = df['event_id'].apply(normalize_event_id_val)
+        df.dropna(subset=['event_id'], inplace=True)
+        df.drop_duplicates(subset=['event_id'], keep='last', inplace=True)
+
+        # 終了済みイベントのみに絞る
+        now_timestamp = int(datetime.now(JST).timestamp())
+        df = df[df['ended_at'] < now_timestamp]
+
+        # ✅ イベント終了日が新しい順にソート（ここが今回の追加）
+        df.sort_values(by="ended_at", ascending=False, inplace=True, ignore_index=True)
+
+        all_past_events = df.copy()
+
+    except requests.exceptions.RequestException as e:
+        st.warning(f"バックアップCSV取得中にエラーが発生しました: {e}")
+    except Exception as e:
+        st.warning(f"バックアップCSVの処理中にエラーが発生しました: {e}")
+
+    return all_past_events.to_dict('records')
+
+
+#@st.cache_data(ttl=300)  # 5分間キャッシュを保持
+def get_total_entries(event_id):
+    """
+    指定されたイベントの総参加ルーム数を取得します。
+    """
+    params = {"event_id": event_id}
+    try:
+        response = requests.get(API_EVENT_ROOM_LIST_URL, headers=HEADERS, params=params, timeout=10)
+        # 404エラーは参加者情報がない場合なので正常系として扱う
+        if response.status_code == 404:
+            return 0
+        response.raise_for_status()
+        data = response.json()
+        # 'total_entries' キーから参加ルーム数を取得
+        return data.get('total_entries', 0)
+    except requests.exceptions.RequestException:
+        # エラー時は 'N/A' を返す
+        return "N/A"
+    except ValueError:
+        return "N/A"
+
+
+# --- ▼ ここから追加: 参加者情報取得ヘルパー（get_total_entries の直後に挿入） ▼ ---
+@st.cache_data(ttl=60)
+def get_event_room_list_api(event_id):
+    """ /api/event/room_list?event_id= を叩いて参加ルーム一覧（主に上位30）を取得する """
+    try:
+        resp = requests.get(API_EVENT_ROOM_LIST_URL, headers=HEADERS, params={"event_id": event_id}, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        # キー名が環境で異なるので複数のキーをチェック
+        if isinstance(data, dict):
+            for k in ('list', 'room_list', 'event_entry_list', 'entries', 'data', 'event_list'):
+                if k in data and isinstance(data[k], list):
+                    return data[k]
+        if isinstance(data, list):
+            return data
+    except Exception:
+        # 何か失敗したら空リストを返す（呼び出し側で扱いやすくするため）
+        return []
     return []
 
-# ---------- 貢献ランクURL生成ロジック ----------
-def generate_contribution_url(event_url, room_id):
+@st.cache_data(ttl=60)
+def get_room_profile_api(room_id):
+    """ /api/room/profile?room_id= を叩いてルームプロフィールを取得する """
+    try:
+        resp = requests.get(f"https://www.showroom-live.com/api/room/profile?room_id={room_id}", headers=HEADERS, timeout=6)
+        resp.raise_for_status()
+        return resp.json() or {}
+    except Exception:
+        return {}
+
+def _show_rank_score(rank_str):
     """
-    イベントURLからURLキーを取得し、貢献ランキングのURLを生成する。
-    例: https://www.showroom-live.com/event/mattari_fireworks249 -> mattari_fireworks249
-    生成: https://www.showroom-live.com/event/contribution/mattari_fireworks249?room_id=ROOM_ID
+    SHOWランクをソート可能なスコアに変換する簡易ヘルパー。
+    完全網羅的ではありませんが、降順ソートができる程度のスコア化を行います。
     """
-    # ★★★ 修正: pd.isna(event_url) をチェックに追加（防御的） ★★★
-    if pd.isna(event_url) or not event_url:
-        return None
-    # URLの最後の階層部分（URLキー）を正規表現で抽出
-    match = re.search(r'/event/([^/]+)/?$', event_url)
-    if match:
-        url_key = match.group(1)
-        return f"https://www.showroom-live.com/event/contribution/{url_key}?room_id={room_id}"
-    return None
-
-# ----------------------------------------------------------------------
-# ★★★ セッションステートの初期化とコールバック関数 ★★★
-# ----------------------------------------------------------------------
-if 'sort_by_point' not in st.session_state:
-    st.session_state.sort_by_point = False
-if 'room_input_value' not in st.session_state:
-    st.session_state.room_input_value = ""
-if 'show_data' not in st.session_state:
-    st.session_state.show_data = False # データ表示トリガー
-
-# ★★★ 管理者モード用セッションステート ★★★
-if 'admin_full_data' not in st.session_state:
-    st.session_state.admin_full_data = False
-if 'admin_start_date' not in st.session_state:
-    st.session_state.admin_start_date = None
-if 'admin_end_date' not in st.session_state:
-    st.session_state.admin_end_date = None
-# ★★★ 管理者モード用 ルーム名キャッシュ ★★★
-if 'room_name_cache' not in st.session_state:
-    st.session_state.room_name_cache = {}
-# ★★★ 最新化トリガーフラグ ★★★
-if 'refresh_trigger' not in st.session_state:
-    st.session_state.refresh_trigger = False
+    if not rank_str:
+        return -999
+    s = str(rank_str).upper()
+    m = re.match(r'([A-Z]+)(\d*)', s)
+    if not m:
+        return -999
+    letters = m.group(1)
+    num = int(m.group(2)) if m.group(2).isdigit() else 0
+    order_map = {'E':0,'D':1,'C':2,'B':3,'A':4,'S':5,'SS':6,'SSS':7}
+    base = order_map.get(letters, 0)
+    return base * 100 - num
 
 
-def toggle_sort_by_point():
-    """ソート状態を切り替えるコールバック関数"""
-    st.session_state.sort_by_point = not st.session_state.sort_by_point
-    st.session_state.show_data = True
 
-def trigger_show_data():
-    """「表示する」ボタンが押されたときのコールバック関数"""
-    st.session_state.room_input_value = st.session_state.room_id_input
-    st.session_state.show_data = True
+HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-def save_room_id():
-    """ルームID入力欄の値が変更されたときにセッションに保存する"""
-    st.session_state.room_input_value = st.session_state.room_id_input
-
-def refresh_data():
-    """最新化ボタンのコールバック"""
-    st.session_state.refresh_trigger = True
-    st.session_state.show_data = True # 最新化も表示トリガーとする
-
-def toggle_full_data():
-    """
-    全量表示チェックボックスの値をセッションステートに強制的に同期させるコールバック関数。
-    キー名 'admin_full_data_checkbox_internal' の値を 'admin_full_data' にコピーする。
-    """
-    st.session_state.admin_full_data = st.session_state.admin_full_data_checkbox_internal
-# ----------------------------------------------------------------------
-
-
-# ---------- UI ----------
-st.markdown(
-    "<h1 style='font-size:28px; text-align:left; color:#1f2937;'>🎤 SHOWROOM 参加イベントビューア</h1>",
-    unsafe_allow_html=True
-)
-#st.markdown("<h1 style='font-size:2.5em;'>🎤 SHOWROOM 参加イベントビューア</h1>", unsafe_allow_html=True)
-#st.title("🎤 SHOWROOM 参加イベントビューア")
-st.write("")
-
-
-# ▼▼ 認証ステップ ▼▼
-if not st.session_state.authenticated:
-    st.markdown("##### 🔑 認証コードを入力してください")
-    input_room_id = st.text_input(
-        "認証コードを入力してください:",
-        placeholder="",
-        type="password",
-        key="room_id_input"
-    )
-
-    # 認証ボタン
-    if st.button("認証する"):
-        if input_room_id:  # 入力が空でない場合のみ
-            try:
-                response = requests.get(ROOM_LIST_URL, timeout=5)
-                response.raise_for_status()
-                room_df = pd.read_csv(io.StringIO(response.text), header=None)
-
-                valid_codes = set(str(x).strip() for x in room_df.iloc[:, 0].dropna())
-
-                if input_room_id.strip() in valid_codes:
-                    st.session_state.authenticated = True
-                    st.success("✅ 認証に成功しました。ツールを利用できます。")
-                    st.rerun()  # 認証成功後に再読み込み
-                else:
-                    st.error("❌ 認証コードが無効です。正しい認証コードを入力してください。")
-            except Exception as e:
-                st.error(f"認証リストを取得できませんでした: {e}")
-        else:
-            st.warning("認証コードを入力してください。")
-
-    # 認証が終わるまで他のUIを描画しない
-    st.stop()
-# ▲▲ 認証ステップここまで ▲▲
-
-
-st.text_input(
-    "表示するルームIDを入力してください:", 
-    value=st.session_state.room_input_value, 
-    key="room_id_input",
-    type="password"
-    #on_change=save_room_id
-)
-
-if st.button("表示する", on_click=trigger_show_data, key="show_data_button"):
-    pass 
-
-room_id = st.session_state.room_input_value.strip()
-is_admin = (room_id == "mksp154851")
-do_show = st.session_state.show_data and room_id != ""
-
-
-# =========================================================
-# 【追加】登録ユーザー判定 ("touroku"で始まる入力)
-# =========================================================
-is_touroku = room_id.startswith("touroku")
-
-if is_touroku:
-    # 「touroku」を除いたルームIDに変換
-    room_id = room_id.replace("touroku", "", 1)
-    # 登録ユーザー用DB/ルームリストを使用
-    EVENT_DB_ACTIVE_URL = EVENT_DB_ADD_URL
-    ROOM_LIST_ACTIVE_URL = ROOM_LIST_ADD_URL
-else:
-    # 既存（管理者・通常）ルートを維持
-    EVENT_DB_ACTIVE_URL = EVENT_DB_URL
-    ROOM_LIST_ACTIVE_URL = ROOM_LIST_URL
-
-
-if not do_show:
-    if room_id == "":
-        # st.info("ルームIDを入力して「表示する」を押してください。") # ライバーモードの挙動に合わせ、infoを削除
+# ✅ event_id 単位でキャッシュ（ページ単位も含む）
+@st.cache_data(ttl=300)
+def fetch_room_list_page(event_id: str, page: int):
+    """1ページ分の room_list を取得（キャッシュ対象）"""
+    url = f"https://www.showroom-live.com/api/event/room_list?event_id={event_id}&p={page}"
+    try:
+        res = requests.get(url, headers=HEADERS, timeout=10)
+        if res.status_code == 200:
+            return res.json().get("list", [])
+    except Exception:
         pass
-    st.stop()
-
-# ----------------------------------------------------------------------
-# データ取得
-# ----------------------------------------------------------------------
-
-# 🎯 常に最新CSVを取得する（セッションキャッシュを無効化）
-if st.session_state.get("refresh_trigger", False) or "df_all" not in st.session_state:
-    #df_all = load_event_db(EVENT_DB_URL)
-    df_all = load_event_db(EVENT_DB_ACTIVE_URL)
-    st.session_state.df_all = df_all
-    st.session_state.refresh_trigger = False
-else:
-    df_all = st.session_state.df_all.copy()
+    return []
 
 
+def get_event_participants(event, limit=10):
+    event_id = event.get("event_id")
+    if not event_id:
+        return []
 
-if st.session_state.df_all.empty:
-    st.stop()
+    # --- ① room_list 全ページを疑似並列で取得 ---
+    max_pages = 30  # 安全上限（900件相当）
+    page_indices = list(range(1, max_pages + 1))
+    all_entries = []
+    seen_ids = set()
 
-df_all = st.session_state.df_all.copy() # コピーを使用して、元のセッションデータを汚染しないようにする
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_page = {
+            executor.submit(fetch_room_list_page, event_id, page): page
+            for page in page_indices
+        }
+        for future in concurrent.futures.as_completed(future_to_page):
+            try:
+                page_entries = future.result()
+                for entry in page_entries:
+                    rid = str(entry.get("room_id"))
+                    if rid and rid not in seen_ids:
+                        seen_ids.add(rid)
+                        all_entries.append(entry)
+                # ページにデータがなくなったら以降は無駄なのでbreak
+                if not page_entries:
+                    break
+            except Exception:
+                continue
 
-# ----------------------------------------------------------------------
-# データのフィルタリングと整形 (管理者/ライバーで分岐)
-# ----------------------------------------------------------------------
+    if not all_entries:
+        return []
 
-if is_admin:
-    # --- 管理者モードのデータ処理 ---
-    # st.info(f"**管理者モード**") # ← 削除 (ユーザー要望)
+    # --- ② 並列で profile 情報を取得 ---
+    def fetch_profile(rid):
+        """個別room_idのプロフィール取得（安全ラップ）"""
+        url = f"https://www.showroom-live.com/api/room/profile?room_id={rid}"
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=6)
+            if r.status_code == 200:
+                return r.json()
+        except Exception:
+            return {}
+        return {}
 
-    # 1. 日付整形とタイムスタンプ追加 (全量)
-    df = df_all.copy()
-    df["開始日時"] = df["開始日時"].apply(fmt_time)
-    df["終了日時"] = df["終了日時"].apply(fmt_time)
-    df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
-    df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
-    
-    # 2. 開催中判定
-    now_ts = int(datetime.now(JST).timestamp())
-    today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-    # 修正前: df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
-    df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts - 3600) # ★★★ 修正後 ★★★
+    room_ids = [item.get("room_id") for item in all_entries if item.get("room_id")]
 
-    # 終了日時が当日（今日0時〜明日0時の間）の判定
-    df["is_end_today"] = df["__end_ts"].apply(lambda x: pd.notna(x) and today_ts <= x < (today_ts + 86400))
+    participants = []
+    # 並列取得（I/Oバウンド処理を高速化）
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_id = {executor.submit(fetch_profile, rid): rid for rid in room_ids}
+        for future in concurrent.futures.as_completed(future_to_id):
+            rid = future_to_id[future]
+            try:
+                profile = future.result()
+                if not profile:
+                    continue
+                participants.append({
+                    "room_id": str(rid),
+                    "room_name": profile.get("room_name") or f"room_{rid}",
+                    "room_level": int(profile.get("room_level", 0)),
+                    "show_rank_subdivided": profile.get("show_rank_subdivided") or "",
+                    "follower_num": int(profile.get("follower_num", 0)),
+                    "live_continuous_days": int(profile.get("live_continuous_days", 0)),
+                })
+            except Exception:
+                continue
 
-    # ★★★ 修正 (5. 開催中イベント最新化) - 自動最新化/ボタン最新化をここで実行 ★★★
-    if is_admin or st.session_state.get('refresh_trigger', False):
-        ongoing = df[df["is_ongoing"]] # df (フィルタ前の全データ) を使用
+    # --- ③ SHOWランク > ルームレベル > フォロワー数 でソート ---
+    rank_order = [
+        "SS-5","SS-4","SS-3","SS-2","SS-1",
+        "S-5","S-4","S-3","S-2","S-1",
+        "A-5","A-4","A-3","A-2","A-1",
+        "B-5","B-4","B-3","B-2","B-1",
+        "C-10","C-9","C-8","C-7","C-6","C-5","C-4","C-3","C-2","C-1"
+    ]
+    rank_score = {rank: len(rank_order) - i for i, rank in enumerate(rank_order)}
+
+    def sort_key(x):
+        s = rank_score.get(x.get("show_rank_subdivided", ""), 0)
+        return (s, x.get("room_level", 0), x.get("follower_num", 0))
+
+    participants_sorted = sorted(participants, key=sort_key, reverse=True)
+
+    if not participants_sorted:
+        return []
+
+    # --- ④ 上位 limit 件のみ抽出 ---
+    top = participants_sorted[:limit]
+
+    # --- ⑤ rank/point補完（存在しない場合は0補正） ---
+    rank_map = {}
+    for r in all_entries:
+        rid = str(r.get("room_id"))
+        if not rid:
+            continue
+        point_val = r.get("point") or r.get("event_point") or r.get("total_point") or 0
+        try:
+            point_val = int(point_val)
+        except Exception:
+            point_val = 0
+        rank_map[rid] = {
+            "rank": r.get("rank") or r.get("position") or "-",
+            "point": point_val
+        }
+
+    for p in top:
+        rid = p["room_id"]
+        rp = rank_map.get(rid, {})
+        p["rank"] = rp.get("rank", "-")
+        p["point"] = rp.get("point", 0)
+
+    return top
+
+
+
+# --- UI表示関数 ---
+
+def display_event_info(event):
+    """
+    1つのイベント情報をStreamlitのUIに表示します。
+    """
+    # 必要な情報が欠けている場合は表示しない
+    if not all(k in event for k in ['image_m', 'event_name', 'event_url_key', 'event_id', 'started_at', 'ended_at']):
+        return
+
+    # 参加ルーム数を取得
+    total_entries = get_total_entries(event['event_id'])
+
+    # UIのレイアウトを定義（左に画像、右に情報）
+    col1, col2 = st.columns([1, 4])
+
+    with col1:
+        st.image(event['image_m'])
+
+    with col2:
+        # イベント名をリンク付きで表示
+        event_url = f"{EVENT_PAGE_BASE_URL}{event['event_url_key']}"
+        st.markdown(f"**[{event['event_name']}]({event_url})**")
         
-        # with st.spinner("開催中イベントの順位/ポイントを最新化中..."): # ← 削除 (ユーザー要望)
-        for idx, row in ongoing.iterrows():
-            event_id = row.get("event_id")
-            room_id_to_update = row.get("ルームID")
-            stats = get_event_stats_from_roomlist(event_id, room_id_to_update)
-            if stats:
-                st.session_state.df_all.at[idx, "順位"] = stats.get("rank") or "-"
-                st.session_state.df_all.at[idx, "ポイント"] = stats.get("point") or 0
-                st.session_state.df_all.at[idx, "レベル"] = stats.get("quest_level") or 0
-            time.sleep(0.1) # API負荷軽減
-        
-        st.session_state.refresh_trigger = False
-        # st.toast("終了前イベントの最新化が完了しました。", icon="✅") # ← 削除 (ユーザー要望)
-        
-        # ★★★ 修正: st.session_state.df_all の更新を反映するため、df を再作成 ★★★
-        df_all = st.session_state.df_all.copy()
-        df = df_all.copy()
-        
-        # 再度フラグ/TSを付ける (必須)
-        df["開始日時"] = df["開始日時"].apply(fmt_time)
-        df["終了日時"] = df["終了日時"].apply(fmt_time)
-        df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
-        df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
-        now_ts = int(datetime.now(JST).timestamp())
-        today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        # 修正前: df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
-        df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts - 3600) # ★★★ 修正後 ★★★
+        # 対象者情報を取得
+        target_info = "対象者限定" if event.get("is_entry_scope_inner") else "全ライバー"
+        st.write(f"**対象:** {target_info}")
 
-        df["is_end_today"] = df["__end_ts"].apply(lambda x: pd.notna(x) and today_ts <= x < (today_ts + 86400))
-    # ★★★ 修正ブロック終了 ★★★
+        # イベント期間をフォーマットして表示
+        start_date = datetime.fromtimestamp(event['started_at'], JST).strftime('%Y/%m/%d %H:%M')
+        end_date = datetime.fromtimestamp(event['ended_at'], JST).strftime('%Y/%m/%d %H:%M')
+        st.write(f"**期間:** {start_date} - {end_date}")
 
+        # 参加ルーム数を表示
+        st.write(f"**参加ルーム数:** {total_entries}")
 
-    # 4. フィルタリングの適用（デフォルトフィルタリングまで）
-    df_filtered = df.copy()
+        # --- ▼ 参加者情報表示の判定（厳密にAPIステータスに基づく） ▼ ---
+        # 判定ルール（簡潔）:
+        # - イベントが API (get_events) で取得された場合、各イベント辞書に '_fetched_status' が付与されている
+        # - その値が 1（開催中） または 3（開催予定）であれば参加者情報表示ボタンを出す
+        fetched_status = event.get("_fetched_status", None)
 
-    # 2023年9月1日以降に開始のイベントに限定（ライバーモードと同じ基準）
-    df_filtered = df_filtered[
-        # __start_ts が有効な値で、かつ FILTER_START_TS 以上であること
-        (df_filtered["__start_ts"].apply(lambda x: pd.notna(x) and x >= FILTER_START_TS))
-        | (df_filtered["__start_ts"].isna()) # タイムスタンプに変換できない行も一応含める
-    ].copy()
+        show_participants_button = False
+        try:
+            if fetched_status is not None:
+                # 数値っぽい文字列も許容
+                fs_int = int(float(fetched_status))
+                if fs_int in (1, 3):
+                    show_participants_button = True
+        except Exception:
+            show_participants_button = False
 
-    # デフォルトフィルタリング（全量表示がOFFの場合）
-    if not st.session_state.admin_full_data:
-        # 終了日時が10日前以降のイベントに絞り込み
-        df_filtered = df_filtered[
-            (df_filtered["__end_ts"].apply(lambda x: pd.notna(x) and x >= FILTER_END_DATE_TS_DEFAULT))
-            | (df_filtered["__end_ts"].isna()) # タイムスタンプに変換できない行も一応含める
-        ].copy()
-
-    # 終了日時フィルタリング用の選択肢生成
-    unique_end_dates = sorted(
-        list(set(df_filtered["終了日時"].apply(lambda x: x.split(' ')[0] if x else '')) - {''}), 
-        reverse=True
-    )
-    
-    # 開始日時フィルタリング用の選択肢生成
-    unique_start_dates = sorted(
-        list(set(df_filtered["開始日時"].apply(lambda x: x.split(' ')[0] if x else '')) - {''}), 
-        reverse=True
-    )
-
-    # 3. UIコンポーネント (フィルタ、最新化ボタン)
-    # ★★★ 修正: 横並びを廃止し、折りたためるセクション内で縦に配置する (レスポンシブ対応) ★★★
-    with st.expander("⚙️ 個別機能・絞り込みオプション"):
-        
-
-        # ============================================================
-        # 🧭 管理者専用：イベントDB更新機能（既存履歴ビューアと独立動作）
-        # ============================================================
-        if is_admin:
-            #st.markdown("---")
-            st.markdown("### 🧩 イベントデータベース更新機能（管理者専用）")
-
-            import ftplib, traceback, socket, concurrent.futures
-            from typing import List, Dict, Any
-
-            API_ROOM_LIST = "https://www.showroom-live.com/api/event/room_list"
-            API_CONTRIBUTION = "https://www.showroom-live.com/api/event/contribution_ranking"
-            ROOM_LIST_URL = "https://mksoul-pro.com/showroom/file/room_list.csv"
-            ARCHIVE_URL = "https://mksoul-pro.com/showroom/file/sr-event-archive.csv"
-            HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; mksoul-bot/1.0)"}
-            JST = pytz.timezone("Asia/Tokyo")
-
-            # ------------------------------------------------------------
-            # 既存ロジック移植（堅牢なGET / FTPアップロード）
-            # ------------------------------------------------------------
-            def http_get_json(url, params=None, retries=3, timeout=12, backoff=0.6):
-                for i in range(retries):
+        # ※ バックアップ(BU)由来などで _fetched_status が無い場合はボタンは出しません（APIで取得できたもののみ対象）
+        if show_participants_button:
+            btn_key = f"show_participants_{event.get('event_id')}"
+            if st.button("参加ルーム情報を表示", key=btn_key):
+                with st.spinner("参加ルーム情報を取得中..."):
                     try:
-                        r = requests.get(url, headers=HEADERS, params=params, timeout=timeout)
-                        if r.status_code == 429:
-                            time.sleep(backoff * (i + 2))
-                            continue
-                        if r.status_code == 200:
-                            return r.json()
-                        if r.status_code in (404, 410):
-                            return None
-                    except (requests.RequestException, socket.timeout):
-                        time.sleep(backoff * (i + 1))
-                return None
+                        participants = get_event_participants(event, limit=10)
+                        if participants:
+                            # DataFrame 化して列名を日本語化して表示（ルーム名はリンク付きで表示）
+                            import pandas as _pd
+                            dfp = _pd.DataFrame(participants)
+                            cols = [
+                                'room_name', 'room_level', 'show_rank_subdivided', 'follower_num',
+                                'live_continuous_days', 'room_id', 'rank', 'point'
+                            ]
+                            for c in cols:
+                                if c not in dfp.columns:
+                                    dfp[c] = ""
+                            dfp_display = dfp[cols].copy()
+                            dfp_display.rename(columns={
+                                'room_name': 'ルーム名',
+                                'room_level': 'ルームレベル',
+                                'show_rank_subdivided': 'SHOWランク',
+                                'follower_num': 'フォロワー数',
+                                'live_continuous_days': 'まいにち配信',
+                                'room_id': 'ルームID',
+                                'rank': '順位',
+                                'point': 'ポイント'
+                            }, inplace=True)
 
-            def ftp_upload_bytes(file_path: str, content_bytes: bytes, retries: int = 2):
-                ftp_info = st.secrets.get("ftp", {})
-                host = ftp_info.get("host")
-                user = ftp_info.get("user")
-                password = ftp_info.get("password")
-                if not host or not user:
-                    raise RuntimeError("FTP情報が st.secrets['ftp'] に存在しません。")
-                for i in range(retries):
-                    try:
-                        with ftplib.FTP(host, timeout=30) as ftp:
-                            ftp.login(user, password)
-                            with io.BytesIO(content_bytes) as bf:
-                                bf.seek(0)
-                                ftp.storbinary(f"STOR {file_path}", bf)
-                        return True
-                    except Exception:
-                        time.sleep(1 + i)
-                raise
+                            # --- ▼ 数値フォーマット関数（カンマ区切りを切替可能） ▼ ---
+                            def _fmt_int_for_display(v, use_comma=True):
+                                try:
+                                    if v is None or (isinstance(v, str) and v.strip() == ""):
+                                        return ""
+                                    num = float(v)
+                                    # ✅ カンマ区切りあり or なしを切り替え
+                                    return f"{int(num):,}" if use_comma else f"{int(num)}"
+                                except Exception:
+                                    return str(v)
 
-            def fmt_time(ts):
-                try:
-                    if ts is None:
-                        return ""
-                    ts = int(ts)
-                    if ts > 20000000000:
-                        ts //= 1000
-                    return datetime.fromtimestamp(ts, JST).strftime("%Y/%m/%d %H:%M")
-                except Exception:
-                    return ""
+                            # --- ▼ 列ごとにフォーマット適用（確実に順序反映） ▼ ---
+                            for col in dfp_display.columns:
+                                # ✅ カンマ区切り「あり」列
+                                if col == 'ポイント':
+                                    dfp_display[col] = dfp_display[col].apply(lambda x: _fmt_int_for_display(x, use_comma=True))
 
-            # ------------------------------------------------------------
-            # イベントDB範囲確認（既存機能）
-            # ------------------------------------------------------------
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("📊 DB内の最新イベントIDを確認", key="check_db_latest_id"):
-                    try:
-                        df_db = load_event_db(EVENT_DB_URL)
-                        latest = pd.to_numeric(df_db["event_id"], errors="coerce").max()
-                        st.success(f"現在のevent_database.csvの最新ID: {int(latest)}")
+                                # ✅ カンマ区切り「なし」列
+                                elif col in ['ルームレベル', 'フォロワー数', 'まいにち配信', '順位']:
+                                    dfp_display[col] = dfp_display[col].apply(lambda x: _fmt_int_for_display(x, use_comma=False))
+
+                            # ルーム名をリンクにしてテーブル表示（HTMLテーブルを利用）
+                            def _make_link(row):
+                                rid = row['ルームID']
+                                name = row['ルーム名'] or f"room_{rid}"
+                                return f'<a href="https://www.showroom-live.com/room/profile?room_id={rid}" target="_blank">{name}</a>'
+                            dfp_display['ルーム名'] = dfp_display.apply(_make_link, axis=1)
+
+                            # コンパクトに expander 内で表示（領域を占有しない）
+                            with st.expander("参加ルーム一覧（最大10ルーム）", expanded=True):
+                                st.write(dfp_display.to_html(escape=False, index=False), unsafe_allow_html=True)
+                        else:
+                            st.info("参加ルーム情報が取得できませんでした（イベント側データが空か、データの取得に失敗しました）。") 
                     except Exception as e:
-                        st.error(f"取得失敗: {e}")
+                        st.error(f"参加ルーム情報の取得中にエラーが発生しました: {e}")
+        # --- ▲ 判定ここまで ▲ ---
+
+
+
+    st.markdown("---")
+
+def get_duration_category(start_ts, end_ts):
+    """
+    イベント期間からカテゴリを判断します。
+    """
+    duration = timedelta(seconds=end_ts - start_ts)
+    if duration <= timedelta(days=3):
+        return "3日以内"
+    elif duration <= timedelta(days=7):
+        return "1週間"
+    elif duration <= timedelta(days=10):
+        return "10日"
+    elif duration <= timedelta(days=14):
+        return "2週間"
+    else:
+        return "その他"
+
+
+# ==============================================================
+# 🔽 ランキング取得・表示機能の追加 🔽
+# ==============================================================
+
+#@st.cache_data(ttl=120)
+def get_event_ranking(event_id, limit=10):
+    """
+    修正版:
+    - APIの各レコードから event_entry.quest_level を拾って quest_level としてセット
+    - 同一 room_id が複数ある場合は point が最大のものを残す（重複排除）
+    - ランク型は rank を優先、それ以外（レベル型）は point 降順でソート
+    - 上位との差（point_diff）を算出して返す（最大 limit 件）
+    """
+    all_rooms = []
+    base_url = "https://www.showroom-live.com/api/event/room_list"
+    try:
+        # 複数ページ取得（安全上限）
+        for page in range(1, 6):  # 必要ならページ数を調整
+            res = requests.get(f"{base_url}?event_id={event_id}&p={page}", timeout=10)
+            if res.status_code != 200:
+                break
+            data = res.json()
+            rooms = data.get("list") or data.get("room_list") or []
+            if not rooms:
+                break
+            all_rooms.extend(rooms)
+            # もしページが少なければ早期抜け
+            if len(rooms) < 30:
+                break
+
+        if not all_rooms:
+            return []
+
+        # --- 各レコードから安全にフィールド抽出 ---
+        normalized = []
+        for r in all_rooms:
+            rid = str(r.get("room_id") or r.get("roomId") or "")
+            # event_entry に quest_level が含まれる場合を優先して取得
+            quest_level = None
+            ev = r.get("event_entry") or r.get("eventEntry") or {}
+            if isinstance(ev, dict):
+                quest_level = ev.get("quest_level") or ev.get("questLevel") or ev.get("level")
+                try:
+                    if quest_level is not None:
+                        quest_level = int(quest_level)
+                except Exception:
+                    pass
+            # point は複数キーがありうる
+            raw_point = r.get("point") or r.get("event_point") or r.get("total_point") or 0
+            try:
+                point_val = int(raw_point)
+            except Exception:
+                # 数値でなければ0
+                try:
+                    point_val = int(float(raw_point))
+                except Exception:
+                    point_val = 0
+            # rank が存在すればとる（数値化できれば数値で）
+            raw_rank = r.get("rank") or r.get("position")
+            try:
+                rank_val = int(raw_rank) if raw_rank is not None and str(raw_rank).isdigit() else raw_rank
+            except Exception:
+                rank_val = raw_rank
+
+            normalized.append({
+                "room_id": rid,
+                "room_name": r.get("room_name") or r.get("performer_name") or "",
+                "rank": rank_val if rank_val is not None else "-",
+                "point": point_val,
+                "quest_level": quest_level if quest_level is not None else "",
+                # preserve original record for possible debug
+                "_raw": r
+            })
+
+        if not normalized:
+            return []
+
+        # --- 重複排除: room_id ごとに point が最大のレコードを残す ---
+        best_by_room = {}
+        for rec in normalized:
+            rid = rec["room_id"]
+            if rid == "" or rid is None:
+                # 空IDのものは単純にスキップ
+                continue
+            prev = best_by_room.get(rid)
+            if prev is None:
+                best_by_room[rid] = rec
+            else:
+                # point が大きい方を保持。等しいなら既存を保持（安定）
+                if rec["point"] > prev["point"]:
+                    best_by_room[rid] = rec
+
+        deduped = list(best_by_room.values())
+
+        # --- 判定: ランク型か否か（少なくとも1件に数値rankがあればランク型と判断） ---
+        is_rank_type = any(isinstance(x.get("rank"), int) for x in deduped)
+
+        # --- ソート ---
+        if is_rank_type:
+            # rankが数値なら昇順（1位が先）に。rankが '-' の場合は末尾へ
+            def rank_sort_key(x):
+                r = x.get("rank")
+                if isinstance(r, int):
+                    return (0, r)  # 数値は先頭（小さいほど良い）
+                try:
+                    # 文字列の数値を試す
+                    if str(r).isdigit():
+                        return (0, int(str(r)))
+                except Exception:
+                    pass
+                return (1, 999999)
+            deduped.sort(key=rank_sort_key)
+        else:
+            # レベル型：ポイント降順
+            deduped.sort(key=lambda x: x.get("point", 0), reverse=True)
+
+        # --- 上位との差を計算 ---
+        for i, rec in enumerate(deduped):
+            if i == 0:
+                rec["point_diff"] = "-"
+            else:
+                rec["point_diff"] = deduped[i - 1]["point"] - rec["point"]
+
+        # --- 最後に表示用サイズに整形して返す ---
+        result = []
+        for rec in deduped[:limit]:
+            result.append({
+                "room_id": rec["room_id"],
+                "room_name": rec["room_name"],
+                "rank": rec["rank"],
+                "point": rec["point"],
+                "point_diff": rec["point_diff"],
+                "quest_level": rec["quest_level"],
+            })
+
+        return result
+
+    except Exception as e:
+        st.warning(f"ランキング取得中にエラーが発生しました: {e}")
+        return []
+
+
+def display_ranking_table(event_id):
+    """ランキング情報を取得し、HTMLテーブルで表示"""
+    ranking = get_event_ranking(event_id)
+    if not ranking:
+        st.info("ランキング情報が取得できませんでした。")
+        return
+
+    st.caption(f"（取得時刻: {datetime.now(JST).strftime('%Y/%m/%d %H:%M:%S')} 現在）")
+
+    import pandas as pd, requests, re
+
+    # --- ▼ event_url_key を取得 ---
+    try:
+        url = f"https://www.showroom-live.com/api/event/contribution_ranking?event_id={event_id}&room_id={ranking[0]['room_id']}"
+        res = requests.get(url, timeout=10)
+        res.raise_for_status()
+        data = res.json()
+        event_url = data.get("event", {}).get("event_url", "")
+        event_url_key = ""
+        if event_url:
+            m = re.search(r"/event/([^/?#]+)", event_url)
+            if m:
+                event_url_key = m.group(1)
+    except Exception as e:
+        st.warning(f"イベントURLキーの取得に失敗しました: {e}")
+        event_url_key = ""
+
+    # --- ▼ DataFrame作成 ---
+    df = pd.DataFrame(ranking)
+    df_display = df[["room_name", "rank", "point", "point_diff", "quest_level", "room_id"]].copy()
+    df_display.rename(columns={
+        "room_name": "ルーム名",
+        "rank": "順位",
+        "point": "ポイント",
+        "point_diff": "上位との差",
+        "quest_level": "レベル",
+    }, inplace=True)
+
+    # --- ▼ 貢献ランク列を追加 ---
+    def make_contrib_link(rid):
+        if not event_url_key or not rid:
+            return "-"
+        contrib_url = f"https://www.showroom-live.com/event/contribution/{event_url_key}?room_id={rid}"
+        return f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">貢献ランク</a>'
+
+    df_display["貢献ランク"] = df_display["room_id"].apply(make_contrib_link)
+
+    # --- ▼ HTMLスタイル定義 ---
+    style_html = """
+    <style>
+    .rank-btn-link {
+        background:#0b57d0;
+        color:white !important;
+        border:none;
+        padding:4px 8px;
+        border-radius:4px;
+        cursor:pointer;
+        text-decoration:none;
+        display:inline-block;
+        font-size:12px;
+    }
+    .rank-btn-link:hover {
+        background:#0949a8;
+    }
+    </style>
+    """
+
+    # --- ▼ ルーム名リンク化 ---
+    def make_room_link(row):
+        rid = row["room_id"]
+        name = row["ルーム名"] or f"room_{rid}"
+        return f'<a href="https://www.showroom-live.com/room/profile?room_id={rid}" target="_blank">{name}</a>'
+    df_display["ルーム名"] = df_display.apply(make_room_link, axis=1)
+
+    # --- ▼ 数値フォーマット ---
+    for col in ["ポイント", "上位との差"]:
+        df_display[col] = df_display[col].apply(lambda x: f"{x:,}" if isinstance(x, (int, float)) else x)
+
+    # --- ▼ 表示列の順序を明確化（room_idは非表示） ---
+    display_cols = ["ルーム名", "順位", "ポイント", "上位との差", "レベル", "貢献ランク"]
+
+    # --- ▼ HTMLテーブル生成 ---
+    html_table = style_html
+    html_table += "<div class='table-wrapper'><table>"
+    #html_table += "<div style='overflow-x:auto;'><table style='width:100%; border-collapse:collapse;'>"
+    html_table += "<thead><tr style='background-color:#f3f4f6;'>"
+    for col in display_cols:
+        html_table += f"<th style='padding:6px; border-bottom:1px solid #ccc; text-align:center;'>{col}</th>"
+    html_table += "</tr></thead><tbody>"
+
+    for _, row in df_display.iterrows():
+        html_table += "<tr>"
+        for col in display_cols:
+            html_table += f"<td style='padding:6px; border-bottom:1px solid #eee; text-align:center;'>{row[col]}</td>"
+        html_table += "</tr>"
+    html_table += "</tbody></table></div>"
+
+    with st.expander("ランキング上位（最大10ルーム）", expanded=True):
+        st.markdown(html_table, unsafe_allow_html=True)
+
+
+# --- メイン処理 ---
+def main():
+    # ページ設定
+    st.set_page_config(
+        page_title="SHOWROOM イベント一覧",
+        page_icon="🎤",
+        layout="wide"
+    )
+
+    st.markdown(
+        "<h1 style='font-size:28px; text-align:left; color:#1f2937;'>🎤 SHOWROOM イベント一覧</h1>",
+        unsafe_allow_html=True
+    )
+    #st.markdown("<h1 style='font-size:2.5em;'>🎤 SHOWROOM イベント一覧</h1>", unsafe_allow_html=True)
+    st.write("")
+
+
+    # ▼▼ 認証ステップ ▼▼
+    if "mksp_authenticated" not in st.session_state:
+        st.session_state.mksp_authenticated = False
+        
+    if not st.session_state.authenticated:
+        st.markdown("##### 🔑 認証コードを入力してください")
+        input_room_id = st.text_input(
+            "認証コードを入力してください:",
+            placeholder="",
+            type="password",
+            key="room_id_input"
+        )
+
+        # 認証ボタン
+        if st.button("認証する"):
+            if input_room_id:  # 入力が空でない場合のみ
+                if input_room_id.strip() == "mksp154851":
+                    st.session_state.authenticated = True
+                    st.session_state.mksp_authenticated = True
+                    st.success("✅ 特別な認証に成功しました。ツールを利用できます。")
+                    st.rerun()
+                else:
+                    try:
+                        response = requests.get(ROOM_LIST_URL, timeout=5)
+                        response.raise_for_status()
+                        room_df = pd.read_csv(io.StringIO(response.text), header=None)
+    
+                        valid_codes = set(str(x).strip() for x in room_df.iloc[:, 0].dropna())
+    
+                        if input_room_id.strip() in valid_codes:
+                            st.session_state.authenticated = True
+                            st.success("✅ 認証に成功しました。ツールを利用できます。")
+                            st.rerun()  # 認証成功後に再読み込み
+                        else:
+                            st.error("❌ 認証コードが無効です。正しい認証コードを入力してください。")
+                    except Exception as e:
+                        st.error(f"認証リストを取得できませんでした: {e}")
+            else:
+                st.warning("認証コードを入力してください。")
+                
+        # 認証が終わるまで他のUIを描画しない
+        st.stop()
+    # ▲▲ 認証ステップここまで ▲▲
+
+
+    # 行間と余白の調整
+    st.markdown(
+        """
+        <style>
+        /* イベント詳細の行間を詰める */
+        .event-info p, .event-info li, .event-info {
+            line-height: 1.7;
+            margin-top: 0.0rem;
+            margin-bottom: 0.4rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # --- フィルタリング機能 ---
+    st.sidebar.header("表示フィルタ")
+    status_options = {
+        "開催中": 1,
+        "開催予定": 3,
+        "終了": 4,
+    }
+
+    # チェックボックスの状態を管理
+    use_on_going = st.sidebar.checkbox("開催中", value=True)
+    use_upcoming = st.sidebar.checkbox("開催予定", value=False)
+    use_finished = st.sidebar.checkbox("終了", value=False)
+    use_past_bu = st.sidebar.checkbox("終了(BU)", value=False, help="過去のバックアップファイルから取得した終了済みイベント")
+
+
+    selected_statuses = []
+    if use_on_going:
+        selected_statuses.append(status_options["開催中"])
+    if use_upcoming:
+        selected_statuses.append(status_options["開催予定"])
+    if use_finished:
+        selected_statuses.append(status_options["終了"])
+
+    if not selected_statuses and not use_past_bu:
+        st.warning("表示するステータスをサイドバーで1つ以上選択してください。")
+    
+    
+    # 選択されたステータスに基づいてイベント情報を取得
+    # 辞書を使って重複を確実に排除
+    unique_events_dict = {}
+
+    # --- カウント用の変数を初期化（追加） ---
+    fetched_count_raw = 0
+    past_count_raw = 0
+    fetched_events = []  # 参照安全のため初期化
+    past_events = []     # 参照安全のため初期化
+
+    if selected_statuses:
+        with st.spinner("イベント情報を取得中..."):
+            fetched_events = get_events(selected_statuses)
+            # --- API取得分の「生」件数を保持（変更） ---
+            fetched_count_raw = len(fetched_events)
+            for event in fetched_events:
+                # --- 変更: event_id を正規化して辞書キーにする ---
+                eid = normalize_event_id_val(event.get('event_id'))
+                if eid is None:
+                    # 無効なIDはスキップ
+                    continue
+                # イベントオブジェクト内の event_id も正規化して上書きしておく（以降の処理を安定させるため）
+                event['event_id'] = eid
+                # フェッチ元（API）を優先して格納（上書き可）
+                unique_events_dict[eid] = event
+    
+    # --- 「終了(BU)」のデータ取得 ---
+    if use_past_bu:
+        with st.spinner("過去のイベントデータを取得・処理中..."):
+            past_events = get_past_events_from_files()
+            past_count_raw = len(past_events)
+
+            # ✅ APIで取得した「終了」イベント（status=4）の event_id 一覧を作成
+            api_finished_events = []
+            try:
+                api_finished_events = get_events([4])  # 明示的に終了ステータスだけ再取得
+            except Exception as ex:
+                st.warning(f"終了イベント情報の取得中にエラーが発生しました: {ex}")
+
+            api_finished_ids = {
+                normalize_event_id_val(e.get("event_id"))
+                for e in api_finished_events
+                if e.get("event_id")
+            }
+
+            # ✅ 「終了(BU)」からAPIの「終了」イベントを除外（重複完全排除）
+            filtered_past_events = []
+            for e in past_events:
+                eid = normalize_event_id_val(e.get("event_id"))
+                if eid and eid not in api_finished_ids:
+                    filtered_past_events.append(e)
+
+            removed_count = len(past_events) - len(filtered_past_events)
+            if removed_count > 0:
+                st.info(f"🧹 「終了(BU)」から {removed_count} 件の重複イベントを除外しました。")
+
+            past_events = filtered_past_events
+
+            # --- 正規化＆辞書格納 ---
+            for event in past_events:
+                eid = normalize_event_id_val(event.get('event_id'))
+                if eid is None:
+                    continue
+                event['event_id'] = eid
+                # 既に API から取得されたイベントが存在する場合は上書きしない（API 側を優先）
+                if eid not in unique_events_dict:
+                    unique_events_dict[eid] = event
+
+
+    # 辞書の値をリストに変換して、フィルタリング処理に進む
+    all_events = list(unique_events_dict.values())
+    
+    # ✅ 特定イベントを完全除外（フィルタ候補にも残らないように）
+    all_events = [e for e in all_events if str(e.get("event_id")) != "12151"]
+    
+    original_event_count = len(all_events)
+
+    # --- 取得前の合計（生）件数とユニーク件数の差分を算出（追加） ---
+    total_raw = fetched_count_raw + past_count_raw
+    unique_total_pre_filter = len(all_events)
+    duplicates_removed_pre_filter = max(0, total_raw - unique_total_pre_filter)
+
+    if not all_events:
+        st.info("該当するイベントはありませんでした。")
+        st.stop()
+    else:
+        # --- reverse制御フラグを定義 ---
+        # 「終了」または「終了(BU)」がチェックされている場合は降順（reverse=True）
+        # それ以外（＝開催中／開催予定のみ）の場合は昇順（reverse=False）
+        reverse_sort = (use_finished or use_past_bu)
+
+        # --- 開始日フィルタの選択肢を生成 ---
+        start_dates = sorted(list(set([
+            datetime.fromtimestamp(e['started_at'], JST).date() for e in all_events if 'started_at' in e
+        ])), reverse=reverse_sort)
+
+        # 日付と曜日の辞書を作成
+        start_date_options = {
+            d.strftime('%Y/%m/%d') + f"({['月', '火', '水', '木', '金', '土', '日'][d.weekday()]})": d
+            for d in start_dates
+        }
+
+        selected_start_dates = st.sidebar.multiselect(
+            "開始日でフィルタ",
+            options=list(start_date_options.keys())
+        )
+
+        # --- 終了日フィルタの選択肢を生成 ---
+        end_dates = sorted(list(set([
+            datetime.fromtimestamp(e['ended_at'], JST).date() for e in all_events if 'ended_at' in e
+        ])), reverse=reverse_sort)
+
+        end_date_options = {
+            d.strftime('%Y/%m/%d') + f"({['月', '火', '水', '木', '金', '土', '日'][d.weekday()]})": d
+            for d in end_dates
+        }
+
+        selected_end_dates = st.sidebar.multiselect(
+            "終了日でフィルタ",
+            options=list(end_date_options.keys())
+        )
+
+        # 期間でフィルタ
+        duration_options = ["3日以内", "1週間", "10日", "2週間", "その他"]
+        selected_durations = st.sidebar.multiselect(
+            "期間でフィルタ",
+            options=duration_options
+        )
+
+        # 対象でフィルタ
+        target_options = ["全ライバー", "対象者限定"]
+        selected_targets = st.sidebar.multiselect(
+            "対象でフィルタ",
+            options=target_options
+        )
+        
+        # 認証されていればダウンロードボタンとタイムスタンプ変換機能をここに配置
+        if st.session_state.mksp_authenticated:
+            st.sidebar.markdown("")
+            st.sidebar.markdown("")
+            st.sidebar.markdown("---")
+            st.sidebar.header("特別機能")
+
+            # --- 🔄 バックアップ更新ボタン ---
+            if st.sidebar.button("バックアップ更新"):
+                try:
+                    update_archive_file()
+                except Exception as e:
+                    st.sidebar.error(f"バックアップ更新中にエラーが発生しました: {e}")
+
+            if st.sidebar.button("ダウンロード準備"):
+                try:
+                    all_statuses_to_download = [1, 3, 4]
+                    with st.spinner("ダウンロード用の全イベントデータを取得中..."):
+                        all_events_to_download = get_events(all_statuses_to_download)
+                    events_for_df = []
+                    for event in all_events_to_download:
+                        if all(k in event for k in ["event_id", "is_event_block", "is_entry_scope_inner", "event_name", "image_m", "started_at", "ended_at", "event_url_key", "show_ranking"]):
+                            event_data = {
+                                "event_id": event["event_id"],
+                                "is_event_block": event["is_event_block"],
+                                "is_entry_scope_inner": event["is_entry_scope_inner"],
+                                "event_name": event["event_name"],
+                                "image_m": event["image_m"],
+                                "started_at": event["started_at"], # Unixタイムスタンプ形式に戻す
+                                "ended_at": event["ended_at"],     # Unixタイムスタンプ形式に戻す
+                                "event_url_key": event["event_url_key"],
+                                "show_ranking": event["show_ranking"]
+                            }
+                            events_for_df.append(event_data)
+                    
+                    if events_for_df:
+                        df = pd.DataFrame(events_for_df)
+                        csv_data = df.to_csv(index=False).encode('utf-8-sig')
+                        st.sidebar.download_button(
+                            label="ダウンロード開始",
+                            data=csv_data,
+                            file_name=f"showroom_events_{datetime.now(JST).strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv",
+                            key="download_button_trigger",
+                        )
+                        st.sidebar.success("ダウンロード準備ができました。上記のボタンをクリックしてください。")
+                    else:
+                        st.sidebar.warning("ダウンロード可能なイベントデータがありませんでした。")
+                except Exception as e:
+                    st.sidebar.error(f"データのダウンロード中にエラーが発生しました: {e}")
+
+            # タイムスタンプ変換機能
+            st.sidebar.markdown("---")
+            st.sidebar.markdown("#### 🕒 タイムスタンプから日時へ変換")
+            timestamp_input = st.sidebar.text_input(
+                "タイムスタンプを入力",
+                placeholder="例: 1754902800",
+                key="timestamp_input"
+            )
+
+            if st.sidebar.button("タイムスタンプから日時へ変換"):
+                if timestamp_input and timestamp_input.isdigit():
+                    try:
+                        ts = int(timestamp_input)
+                        converted_dt = datetime.fromtimestamp(ts, JST)
+                        st.sidebar.success(
+                            f"**変換結果:**\n\n"
+                            f"**日時:** {converted_dt.strftime('%Y/%m/%d %H:%M:%S')}"
+                        )
+                    except ValueError:
+                        st.sidebar.error("無効なタイムスタンプです。数値を入力してください。")
+                else:
+                    st.sidebar.warning("タイムスタンプを入力してください。")
+
+            # 日時からタイムスタンプへ変換
+            st.sidebar.markdown("---")
+            st.sidebar.markdown("#### 📅 日時からタイムスタンプへ変換")
+            datetime_input = st.sidebar.text_input(
+                "日時を入力 (YYYY/MM/DD HH:MM)",
+                placeholder="例: 2025/08/11 18:00",
+                key="datetime_input"
+            )
+            
+            # 日時を「開始時間」のタイムスタンプに変換するボタン
+            if st.sidebar.button("日時から開始タイムスタンプへ変換"):
+                if datetime_input:
+                    try:
+                        dt_obj_naive = datetime.strptime(datetime_input.strip(), '%Y/%m/%d %H:%M').replace(second=0)
+                        dt_obj = JST.localize(dt_obj_naive, is_dst=None)
+                        timestamp = int(dt_obj.timestamp())
+                        st.sidebar.success(
+                            f"**開始タイムスタンプの変換結果:**\n\n"
+                            f"**タイムスタンプ:** {timestamp}"
+                        )
+                    except ValueError:
+                        st.sidebar.error("無効な日時形式です。'YYYY/MM/DD HH:MM'形式で入力してください。")
+                else:
+                    st.sidebar.warning("日時を入力してください。")
+            
+            # 日時を「終了時間」のタイムスタンプへ変換するボタン
+            if st.sidebar.button("日時から終了タイムスタンプへ変換"):
+                if datetime_input:
+                    try:
+                        dt_obj_naive = datetime.strptime(datetime_input.strip(), '%Y/%m/%d %H:%M').replace(second=59)
+                        dt_obj = JST.localize(dt_obj_naive, is_dst=None)
+                        timestamp = int(dt_obj.timestamp())
+                        st.sidebar.success(
+                            f"**終了タイムスタンプの変換結果:**\n\n"
+                            f"**タイムスタンプ:** {timestamp}"
+                        )
+                    except ValueError:
+                        st.sidebar.error("無効な日時形式です。'YYYY/MM/DD HH:MM'形式で入力してください。")
+                else:
+                    st.sidebar.warning("日時を入力してください。")
+        
+        # フィルタリングされたイベントリスト
+        filtered_events = all_events
+        
+        if selected_start_dates:
+            # start_date_options を参照する
+            selected_dates_set = {start_date_options[d] for d in selected_start_dates}
+            filtered_events = [
+                e for e in filtered_events
+                if 'started_at' in e and datetime.fromtimestamp(e['started_at'], JST).date() in selected_dates_set
+            ]
+        
+        # ▼▼ 終了日フィルタの処理を追加（ここから追加/修正） ▼▼
+        if selected_end_dates:
+            # end_date_options を参照する
+            selected_dates_set = {end_date_options[d] for d in selected_end_dates}
+            filtered_events = [
+                e for e in filtered_events
+                if 'ended_at' in e and datetime.fromtimestamp(e['ended_at'], JST).date() in selected_dates_set
+            ]
+        # ▲▲ 終了日フィルタの処理を追加（ここまで追加/修正） ▲▲
+
+        if selected_durations:
+            filtered_events = [
+                e for e in filtered_events
+                if get_duration_category(e['started_at'], e['ended_at']) in selected_durations
+            ]
+        
+        if selected_targets:
+            target_map = {"全ライバー": False, "対象者限定": True}
+            selected_target_values = {target_map[t] for t in selected_targets}
+            filtered_events = [
+                e for e in filtered_events
+                if e.get('is_entry_scope_inner') in selected_target_values
+            ]
+        
+        
+        # --- 表示メッセージの改善（汎用的な文言） ---
+        filtered_count = len(filtered_events)
+        if use_finished and use_past_bu and duplicates_removed_pre_filter > 0:
+            st.success(f"{filtered_count}件のイベントが見つかりました。※重複データが存在した場合は1件のみ表示しています。")
+        else:
+            st.success(f"{filtered_count}件のイベントが見つかりました。")
+        
+        st.markdown("---")
+        # 取得したイベント情報を1つずつ表示
+        for event in filtered_events:
+            col1, col2 = st.columns([1, 4])
+
+            with col1:
+                st.image(event['image_m'])
 
             with col2:
-                if st.button("🌐 SHOWROOM開催予定イベントの最新IDを確認", key="check_api_latest_id"):
-                    try:
-                        latest_id = 0
-                        for p in range(1, 6):
-                            data = http_get_json("https://www.showroom-live.com/api/event/search",
-                                                 params={"status": 3, "page": p})
-                            if not data or "event_list" not in data:
-                                break
-                            ids = [int(ev["event_id"]) for ev in data["event_list"] if "event_id" in ev]
-                            if ids:
-                                latest_id = max(latest_id, max(ids))
-                            time.sleep(0.2)
-                        if latest_id:
-                            st.success(f"SHOWROOM開催予定イベントの最新ID: {latest_id}")
-                        else:
-                            st.warning("取得できませんでした。")
-                    except Exception as e:
-                        st.error(f"API取得失敗: {e}")
+                event_url = f"{EVENT_PAGE_BASE_URL}{event['event_url_key']}"
+                st.markdown(
+                    f'<div class="event-info"><strong><a href="{event_url}">{event["event_name"]}</a></strong></div>',
+                    unsafe_allow_html=True
+                )
 
-            st.markdown("---")
-            st.markdown("#### 🚀 データベース更新実行")
+                target_info = "対象者限定" if event.get("is_entry_scope_inner") else "全ライバー"
+                st.markdown(f'<div class="event-info"><strong>対象:</strong> {target_info}</div>', unsafe_allow_html=True)
 
-            start_id = st.number_input("スキャン開始イベントID", min_value=1, value=40000, step=1)
-            end_id = st.number_input("スキャン終了イベントID", min_value=start_id, value=start_id + 500, step=1)
-            max_workers = st.number_input("並列処理数", min_value=1, max_value=30, value=3)
-            save_interval = st.number_input("途中保存間隔（件）", min_value=50, value=300, step=50)
-            #ftp_path = st.text_input("FTP保存パス", value="/mksoul-pro.com/showroom/file/event_database.csv")
-            #ftp_path = "/mksoul-pro.com/showroom/file/event_database.csv"
-            #st.caption(f"📂 FTP保存先: {ftp_path}")
+                start_date = datetime.fromtimestamp(event['started_at'], JST).strftime('%Y/%m/%d %H:%M')
+                end_date = datetime.fromtimestamp(event['ended_at'], JST).strftime('%Y/%m/%d %H:%M')
+                st.markdown(
+                    f'<div class="event-info"><strong>期間:</strong> {start_date} - {end_date}</div>',
+                    unsafe_allow_html=True
+                )
 
-            # === REPLACE START ===
-            # (このブロックを既存の「データベース更新実行」周りのコードと入れ替えてください)
+                total_entries = get_total_entries(event['event_id'])
+                st.markdown(
+                    f'<div class="event-info"><strong>参加ルーム数:</strong> {total_entries}</div>',
+                    unsafe_allow_html=True
+                )
 
-            # ------------------------------------------------------------
-            # ✨追加：特定ルーム限定更新機能
-            # ------------------------------------------------------------
-            st.markdown("---")
-            st.markdown("#### 🎯 特定ルームID限定でイベントDB更新（オプション）")
-            target_room_input = st.text_input("ルームIDを指定（カンマ区切りで複数指定可）", placeholder="例: 123456,789012")
+                # --- ▼ ここから追加: 終了日時に基づいてボタン表示制御（修正版） ▼ ---
+                try:
+                    now_ts = int(datetime.now(JST).timestamp())
+                    ended_ts = int(float(event.get("ended_at", 0)))
+                    # ミリ秒表記対策
+                    if ended_ts > 20000000000:
+                        ended_ts //= 1000
+                except Exception:
+                    ended_ts = 0
+                    now_ts = 0
 
-            # ------------------------------------------------------------
-            # 実行ボタン（全体更新 or 限定更新）
-            # ------------------------------------------------------------
-            run_col1, run_col2 = st.columns(2)
+                # fetched_statusを安全に取得
+                try:
+                    fetched_status = int(float(event.get("_fetched_status", 0)))
+                except Exception:
+                    fetched_status = None
 
-            # --- 共通ユーティリティ：event_list API を全ページ走査して対象 entries を返す
-            def fetch_all_pages_entries(event_id, filter_ids=None):
-                """
-                event_id の room_list API を全ページ走査して、filter_ids に含まれる room_id の entries を返す。
-                filter_ids が None の場合は全 entries を返す。
-                """
-                entries = []
-                page = 1
-                seen_pages = set()
+                # -------------------------------
+                # ① 開催中 or 開催予定 → 参加ルームボタンを表示
+                # -------------------------------
+                if now_ts < ended_ts:
+                    btn_key = f"show_participants_{event.get('event_id')}"
+                    if st.button("参加ルーム情報を表示", key=btn_key):
+                        with st.spinner("参加ルーム情報を取得中..."):
+                            try:
+                                participants = get_event_participants(event, limit=10)
+                                if not participants:
+                                    st.info("参加ルームがありません。")
+                                else:
+                                    import pandas as _pd
+                                    rank_order = [
+                                        "SS-5","SS-4","SS-3","SS-2","SS-1",
+                                        "S-5","S-4","S-3","S-2","S-1",
+                                        "A-5","A-4","A-3","A-2","A-1",
+                                        "B-5","B-4","B-3","B-2","B-1",
+                                        "C-10","C-9","C-8","C-7","C-6","C-5","C-4","C-3","C-2","C-1"
+                                    ]
+                                    rank_score = {rank: i for i, rank in enumerate(rank_order[::-1])}
+                                    dfp = _pd.DataFrame(participants)
+                                    cols = [
+                                        'room_name', 'room_level', 'show_rank_subdivided',
+                                        'follower_num', 'live_continuous_days', 'room_id', 'rank', 'point'
+                                    ]
+                                    for c in cols:
+                                        if c not in dfp.columns:
+                                            dfp[c] = ""
+                                    dfp['_rank_score'] = dfp['show_rank_subdivided'].map(rank_score).fillna(-1)
+                                    dfp.sort_values(
+                                        by=['_rank_score', 'room_level', 'follower_num'],
+                                        ascending=[False, False, False],
+                                        inplace=True
+                                    )
+                                    dfp_display = dfp[cols].copy()
+                                    dfp_display.rename(columns={
+                                        'room_name': 'ルーム名',
+                                        'room_level': 'ルームレベル',
+                                        'show_rank_subdivided': 'SHOWランク',
+                                        'follower_num': 'フォロワー数',
+                                        'live_continuous_days': 'まいにち配信',
+                                        'room_id': 'ルームID',
+                                        'rank': '順位',
+                                        'point': 'ポイント'
+                                    }, inplace=True)
 
-                while True:
-                    data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": page})
-                    if not data or "list" not in data:
-                        break
+                                    def _make_link(row):
+                                        rid = row['ルームID']
+                                        name = row['ルーム名'] or f"room_{rid}"
+                                        return f'<a href="https://www.showroom-live.com/room/profile?room_id={rid}" target="_blank">{name}</a>'
+                                    dfp_display['ルーム名'] = dfp_display.apply(_make_link, axis=1)
 
-                    # 無限ループ防止：同じページを2回読んだら終了
-                    if page in seen_pages:
-                        break
-                    seen_pages.add(page)
+                                    # 数値フォーマット関数
+                                    def _fmt_int_for_display(v, comma=True):
+                                        try:
+                                            if v is None or (isinstance(v, str) and v.strip() == ""):
+                                                return ""
+                                            num = float(v)
+                                            return f"{int(num):,}" if comma else f"{int(num)}"
+                                        except Exception:
+                                            return str(v)
+                                    if 'ポイント' in dfp_display.columns:
+                                        dfp_display['ポイント'] = dfp_display['ポイント'].apply(lambda x: _fmt_int_for_display(x, comma=True))
+                                    for col in ['ルームレベル', 'フォロワー数', 'まいにち配信', '順位']:
+                                        if col in dfp_display.columns:
+                                            dfp_display[col] = dfp_display[col].apply(lambda x: _fmt_int_for_display(x, comma=False))
 
-                    page_entries = data["list"]
-                    if filter_ids:
-                        page_entries = [e for e in page_entries if str(e.get("room_id")) in filter_ids]
+                                    html_table = "<table style='width:100%; border-collapse:collapse;'>"
+                                    html_table += "<thead style='background-color:#f3f4f6;'><tr>"
+                                    for col in dfp_display.columns:
+                                        html_table += f"<th style='padding:6px; border-bottom:1px solid #ccc; text-align:center;'>{col}</th>"
+                                    html_table += "</tr></thead><tbody>"
+                                    for _, row in dfp_display.iterrows():
+                                        html_table += "<tr>"
+                                        for val in row:
+                                            html_table += f"<td style='padding:6px; border-bottom:1px solid #eee; text-align:center;'>{val}</td>"
+                                        html_table += "</tr>"
+                                    html_table += "</tbody></table>"
 
-                    entries.extend(page_entries)
+                                    with st.expander("参加ルーム一覧（最大10ルーム）", expanded=True):
+                                        st.markdown(f"<div class='table-wrapper'>{html_table}</div>", unsafe_allow_html=True)
+                                        #st.markdown(f"<div style='overflow-x: auto;'>{html_table}</div>", unsafe_allow_html=True)
+                            except Exception as e:
+                                st.error(f"参加ルーム情報の取得中にエラーが発生しました: {e}")
+                # -------------------------------
+                # ② ランキングボタンは常に別判定（終了イベントも対象）【終了(BU)完全対応版】
+                # -------------------------------
 
-                    # ✅ 終了条件（最重要）
-                    if (
-                        not data.get("next_page") or
-                        str(data.get("current_page")) == str(data.get("last_page"))
-                    ):
-                        break
+                try:
+                    # 終了(BU)イベントIDをキャッシュに保持（型違い両対応）
+                    if "past_event_ids" not in st.session_state:
+                        st.session_state.past_event_ids = set()
+                        for e in past_events:
+                            eid = e.get("event_id")
+                            if eid is not None:
+                                st.session_state.past_event_ids.add(str(eid))
+                                try:
+                                    st.session_state.past_event_ids.add(str(int(eid)))
+                                except Exception:
+                                    pass
+                    past_event_ids = st.session_state.past_event_ids
+                except Exception:
+                    past_event_ids = set()
 
-                    page += 1
-                    time.sleep(0.03)
+                # 🔹 現在処理中のイベントIDを取得
+                eid_str = str(event.get("event_id"))
+                fetched_status = None
+                try:
+                    fetched_status = int(float(event.get("_fetched_status", 0)))
+                except Exception:
+                    pass
 
-                return entries
+                # --- 条件 ---
+                # ① APIから取得（開催中・終了）
+                # ② 「終了(BU)」ON時
+                cond_is_target = (
+                    (fetched_status in (1, 4)) or
+                    (use_past_bu)
+                )
 
-
-
-            # --- 共通関数（全ルーム更新用）: event_id -> recs を返す（管理者用）
-            def process_event_full(event_id, managed_ids, target_room_ids=None):
-                recs = []
-
-                # 対象ルーム集合の決定
-                if target_room_ids:
-                    filter_ids = managed_ids & set(target_room_ids)
+                if cond_is_target:
+                    btn_rank_key = f"show_ranking_{eid_str}"
+                    if st.button("ランキングを表示", key=btn_rank_key):
+                        with st.spinner("ランキング情報を取得中..."):
+                            display_ranking_table(event.get('event_id'))
+                # --- ▲ ここまで修正版 ▲ ---
                 else:
-                    filter_ids = managed_ids
+                    # 終了済みイベントは非表示 or 非活性メッセージを表示
+                    #st.markdown('<div class="event-info"><em>（イベント終了済のため参加ルーム情報は非表示）</em></div>', unsafe_allow_html=True)
+                    st.markdown('', unsafe_allow_html=True)
+                # --- ▲ 追加ここまで ▲ ---
 
-                # ✅ 全ページから該当ルームを取得（filter_idsが空でも全件読む）
-                entries = fetch_all_pages_entries(event_id, filter_ids if len(filter_ids) > 0 else None)
+            st.markdown("---")
 
-                if not entries:
-                    return []
-
-                # イベント詳細をルームごとに取得
-                details = {}
-                unique_room_ids = {str(e.get("room_id")) for e in entries}
-                for rid in unique_room_ids:
-                    data2 = http_get_json(API_CONTRIBUTION, params={"event_id": event_id, "room_id": rid})
-                    if data2 and isinstance(data2, dict) and "event" in data2:
-                        details[rid] = data2["event"]
-                    time.sleep(0.03)
-
-                # レコード生成
-                for e in entries:
-                    rid = str(e.get("room_id"))
-                    rank = e.get("rank") or e.get("position") or "-"
-                    point = e.get("point") or e.get("total_point") or 0
-                    quest = e.get("event_entry", {}).get("quest_level") if isinstance(e.get("event_entry"), dict) else e.get("quest_level") or 0
-                    detail = details.get(rid)
-                    recs.append({
-                        "PR対象": "",
-                        "ライバー名": e.get("room_name", ""),
-                        "アカウントID": e.get("account_id", ""),
-                        "イベント名": detail.get("event_name") if detail else "",
-                        "開始日時": fmt_time(detail.get("started_at")) if detail else "",
-                        "終了日時": fmt_time(detail.get("ended_at")) if detail else "",
-                        "順位": rank,
-                        "ポイント": point,
-                        "備考": "",
-                        "紐付け": "○",
-                        "URL": detail.get("event_url") if detail else "",
-                        "レベル": quest,
-                        "event_id": str(event_id),
-                        "ルームID": rid,
-                        "イベント画像（URL）": (detail.get("image") if detail else "")
-                    })
-                return recs
-
-
-
-            # --- 共通関数（登録ユーザー用）: event_id -> recs を返す（add 用） ---
-            def process_event_add(event_id, add_room_ids):
-                recs = []
-                # fetch only add_room_ids entries across pages
-                entries = fetch_all_pages_entries(event_id, filter_ids=add_room_ids if add_room_ids else set())
-                if not entries:
-                    return []
-
-                # get details per room
-                details = {}
-                unique_room_ids = { str(e.get("room_id")) for e in entries }
-                for rid in unique_room_ids:
-                    data2 = http_get_json(API_CONTRIBUTION, params={"event_id": event_id, "room_id": rid})
-                    if data2 and isinstance(data2, dict) and "event" in data2:
-                        details[rid] = data2["event"]
-                    time.sleep(0.03)
-
-                for e in entries:
-                    rid = str(e.get("room_id"))
-                    rank = e.get("rank") or e.get("position") or "-"
-                    point = e.get("point") or e.get("total_point") or 0
-                    quest = e.get("event_entry", {}).get("quest_level") if isinstance(e.get("event_entry"), dict) else e.get("quest_level") or 0
-                    detail = details.get(rid)
-                    recs.append({
-                        "PR対象": "",
-                        "ライバー名": e.get("room_name", ""),
-                        "アカウントID": e.get("account_id", ""),
-                        "イベント名": detail.get("event_name") if detail else "",
-                        "開始日時": fmt_time(detail.get("started_at")) if detail else "",
-                        "終了日時": fmt_time(detail.get("ended_at")) if detail else "",
-                        "順位": rank,
-                        "ポイント": point,
-                        "備考": "",
-                        "紐付け": "○",
-                        "URL": detail.get("event_url") if detail else "",
-                        "レベル": quest,
-                        "event_id": str(event_id),
-                        "ルームID": rid,
-                        "イベント画像（URL）": (detail.get("image") if detail else "")
-                    })
-                return recs
-
-
-            # =========================================================
-            # 全ルーム更新実行ボタン（最終修正版）
-            # =========================================================
-            with run_col1:
-                ftp_path = "/mksoul-pro.com/showroom/file/event_database.csv"
-                st.markdown("")
-                st.markdown(f"<div style='color:gray; font-size:12px;'>📂 FTP保存先: {ftp_path}</div>", unsafe_allow_html=True)
-                st.markdown("")
-
-                if st.button("🔄 イベントDB更新開始", key="run_db_update"):
-                    from concurrent.futures import ThreadPoolExecutor, as_completed
-
-                    st.info("データ収集を開始します。")
-                    progress = st.progress(0)
-                    managed_rooms = pd.read_csv(ROOM_LIST_URL, dtype=str)
-                    managed_ids = set(managed_rooms["ルームID"].astype(str))
-
-                    # 指定ルーム入力の解釈（既存機能の維持）
-                    target_room_ids_str = [r.strip() for r in target_room_input.split(",") if r.strip()]
-                    target_room_ids = set(target_room_ids_str) if target_room_ids_str else None
-                    
-                    if target_room_ids:
-                        st.info(f"✅ 対象ルームを指定して更新します: {', '.join(target_room_ids)}")
-                    else:
-                        st.info("📡 全ルーム対象で更新します。")
-
-                    # ■■■ 修正：事前スキャンを撤廃し、全イベントIDに対して直接データ取得を実行 ■■■
-                    all_records = []
-                    event_id_range = list(range(int(start_id), int(end_id) + 1))
-                    total = len(event_id_range)
-                    done = 0
-
-                    with ThreadPoolExecutor(max_workers=int(max_workers)) as ex:
-                        # 全てのイベントIDに対し、データ収集関数を直接呼び出す
-                        futures = {ex.submit(process_event_full, eid, managed_ids, target_room_ids): eid for eid in event_id_range}
-                        for fut in as_completed(futures):
-                            eid = futures[fut]
-                            try:
-                                # 関数が返したレコード（対象者がいなければ空リスト）を追加
-                                recs = fut.result()
-                                if recs:  # データが取得できた場合のみ追加
-                                    all_records.extend(recs)
-                            except Exception as e:
-                                st.error(f"event_id={eid} の処理でエラー: {e}")
-                            done += 1
-                            progress.progress(done / total)
-                    # ■■■ 修正ここまで ■■■
-
-                    if not all_records:
-                        st.warning("📭 指定条件に一致するイベントデータがありませんでした。")
-                        st.stop()
-
-                    # --- 結果マージ・保存処理（変更なし） ---
-                    df_new = pd.DataFrame(all_records)
-                    try:
-                        existing_df = load_event_db(EVENT_DB_URL)
-                    except Exception:
-                        existing_df = pd.DataFrame()
-
-                    merged_df = existing_df.copy()
-                    for col in ["event_id", "ルームID"]:
-                        if col in merged_df.columns:
-                            merged_df[col] = merged_df[col].astype(str)
-                    df_new["event_id"] = df_new["event_id"].astype(str)
-                    df_new["ルームID"] = df_new["ルームID"].astype(str)
-
-                    updated_rows = 0
-                    added_rows = 0
-
-                    for _, new_row in df_new.iterrows():
-                        eid = str(new_row["event_id"])
-                        rid = str(new_row["ルームID"])
-                        mask = (merged_df["event_id"] == eid) & (merged_df["ルームID"] == rid) if ("event_id" in merged_df.columns and "ルームID" in merged_df.columns) else pd.Series([False]*len(merged_df))
-                        if mask.any():
-                            idx = mask.idxmax()
-                            for col in ["順位", "ポイント", "レベル", "イベント名", "開始日時", "終了日時", "URL"]:
-                                merged_df.at[idx, col] = new_row.get(col, merged_df.at[idx, col])
-                            updated_rows += 1
-                        else:
-                            merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
-                            added_rows += 1
-                    
-                    # --- 不要行削除ロジック（変更なし） ---
-                    #scanned_event_ids = set(map(str, event_id_range))
-                    #new_pairs = set(df_new[["event_id", "ルームID"]].apply(lambda r: (str(r["event_id"]), str(r["ルームID"])), axis=1).tolist())
-                    #
-                    #before_count = len(merged_df)
-                    #def keep_row(row):
-                    #    eid = str(row.get("event_id"))
-                    #    rid = str(row.get("ルームID"))
-                    #    if eid not in scanned_event_ids:
-                    #        return True
-                    #    return (eid, rid) in new_pairs
-
-                    # --- 不要行削除ロジック（修正版） ---
-                    scanned_event_ids = set(map(str, event_id_range))
-                    new_pairs = set(
-                        df_new[["event_id", "ルームID"]]
-                        .apply(lambda r: (str(r["event_id"]), str(r["ルームID"])), axis=1)
-                        .tolist()
-                    )
-
-                    before_count = len(merged_df)
-
-                    def keep_row(row):
-                        eid = str(row.get("event_id"))
-                        rid = str(row.get("ルームID"))
-
-                        # 🔹 特定ルーム指定時 → 指定ルームのみ削除判定対象
-                        if target_room_ids and rid not in target_room_ids:
-                            return True  # 他ルームのデータは保持
-
-                        # 🔹 イベントID範囲外 → 常に保持
-                        if eid not in scanned_event_ids:
-                            return True
-
-                        # 🔹 範囲内のルームで new_pairs に含まれない場合 → 削除対象
-                        return (eid, rid) in new_pairs
-
-                    if not merged_df.empty and "event_id" in merged_df.columns and "ルームID" in merged_df.columns:
-                        keep_mask = merged_df.apply(keep_row, axis=1)
-                        merged_df = merged_df[keep_mask].reset_index(drop=True)
-
-                    deleted_rows = before_count - len(merged_df)
-                    
-                    if not merged_df.empty and "event_id" in merged_df.columns and "ルームID" in merged_df.columns:
-                        keep_mask = merged_df.apply(keep_row, axis=1)
-                        merged_df = merged_df[keep_mask].reset_index(drop=True)
-
-                    deleted_rows = before_count - len(merged_df)
-
-                    # --- ソート・保存（変更なし） ---
-                    merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
-                    merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
-                    merged_df.drop(columns=["event_id_num"], inplace=True)
-
-                    csv_bytes = merged_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-                    try:
-                        ftp_upload_bytes(ftp_path, csv_bytes)
-                        st.success(f"✅ 更新完了: 更新 {updated_rows}件 / 新規追加 {added_rows}件 / 削除 {deleted_rows}件 / 合計 {len(merged_df)} 件を保存しました。")
-                    except Exception as e:
-                        st.warning(f"FTPアップロード失敗: {e}")
-                        st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_database.csv")
-
-
-            # =========================================================
-            # 登録ユーザー用DB更新ボタン（最終修正版）
-            # =========================================================
-            with run_col2:
-                EVENT_DB_ADD_PATH = "/mksoul-pro.com/showroom/file/event_database_add.csv"
-                st.markdown("")
-                st.markdown(f"<div style='color:gray; font-size:12px;'>📂 FTP保存先: {EVENT_DB_ADD_PATH}</div>", unsafe_allow_html=True)
-                st.markdown("")
-
-                if st.button("🧩 登録ユーザーDB更新開始", key="run_add_db_update"):
-                    from concurrent.futures import ThreadPoolExecutor, as_completed
-
-                    st.info("登録ユーザーのイベントデータ更新を開始します。")
-                    progress = st.progress(0)
-
-                    ROOM_LIST_ADD_URL = "https://mksoul-pro.com/showroom/file/room_list_add.csv"
-                    
-                    df_add_rooms = pd.read_csv(ROOM_LIST_ADD_URL, dtype=str)
-                    add_room_ids = set(df_add_rooms["ルームID"].astype(str).tolist())
-
-                    # ■■■ 修正：事前スキャンを撤廃し、全イベントIDに対して直接データ取得を実行 ■■■
-                    all_records = []
-                    event_id_range = list(range(int(start_id), int(end_id) + 1))
-                    total = len(event_id_range)
-                    done = 0
-
-                    with ThreadPoolExecutor(max_workers=int(max_workers)) as ex:
-                        futures = {ex.submit(process_event_add, eid, add_room_ids): eid for eid in event_id_range}
-                        for fut in as_completed(futures):
-                            eid = futures[fut]
-                            try:
-                                recs = fut.result()
-                                if recs: # データが取得できた場合のみ追加
-                                    all_records.extend(recs)
-                            except Exception as e:
-                                st.error(f"event_id={eid} の処理でエラー: {e}")
-                            done += 1
-                            progress.progress(done / total)
-                    # ■■■ 修正ここまで ■■■
-
-                    if not all_records:
-                        st.warning("📭 登録ユーザーの該当データがありませんでした。")
-                        st.stop()
-
-                    # --- 結果マージ・保存処理（変更なし） ---
-                    df_new = pd.DataFrame(all_records)
-                    try:
-                        existing_df = load_event_db(EVENT_DB_ADD_URL)
-                    except Exception:
-                        existing_df = pd.DataFrame()
-
-                    merged_df = existing_df.copy()
-                    for col in ["event_id", "ルームID"]:
-                        if col in merged_df.columns:
-                            merged_df[col] = merged_df[col].astype(str)
-                    df_new["event_id"] = df_new["event_id"].astype(str)
-                    df_new["ルームID"] = df_new["ルームID"].astype(str)
-
-                    updated_rows = 0
-                    added_rows = 0
-                    
-                    for _, new_row in df_new.iterrows():
-                        eid = str(new_row["event_id"])
-                        rid = str(new_row["ルームID"])
-                        mask = (merged_df["event_id"] == eid) & (merged_df["ルームID"] == rid) if ("event_id" in merged_df.columns and "ルームID" in merged_df.columns) else pd.Series([False]*len(merged_df))
-                        if mask.any():
-                            idx = mask.idxmax()
-                            for col in ["順位", "ポイント", "レベル", "イベント名", "開始日時", "終了日時", "URL"]:
-                                merged_df.at[idx, col] = new_row.get(col, merged_df.at[idx, col])
-                            updated_rows += 1
-                        else:
-                            merged_df = pd.concat([merged_df, pd.DataFrame([new_row])], ignore_index=True)
-                            added_rows += 1
-
-                    # --- 不要行削除ロジック（変更なし） ---
-                    scanned_event_ids = set(map(str, event_id_range))
-                    new_pairs = set(df_new[["event_id", "ルームID"]].apply(lambda r: (str(r["event_id"]), str(r["ルームID"])), axis=1).tolist())
-
-                    before_count = len(merged_df)
-                    def keep_row_add(row):
-                        eid = str(row.get("event_id"))
-                        rid = str(row.get("ルームID"))
-                        if eid not in scanned_event_ids:
-                            return True
-                        return (eid, rid) in new_pairs
-                    
-                    if not merged_df.empty and "event_id" in merged_df.columns and "ルームID" in merged_df.columns:
-                        keep_mask = merged_df.apply(keep_row_add, axis=1)
-                        merged_df = merged_df[keep_mask].reset_index(drop=True)
-                    
-                    deleted_rows = before_count - len(merged_df)
-
-                    # --- ソート・保存（変更なし） ---
-                    merged_df["event_id_num"] = pd.to_numeric(merged_df["event_id"], errors="coerce")
-                    merged_df.sort_values(["event_id_num", "ルームID"], ascending=[False, True], inplace=True)
-                    merged_df.drop(columns=["event_id_num"], inplace=True)
-
-                    csv_bytes = merged_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-                    try:
-                        ftp_upload_bytes(EVENT_DB_ADD_PATH, csv_bytes)
-                        st.success(f"✅ 更新完了: 更新 {updated_rows}件 / 新規追加 {added_rows}件 / 削除 {deleted_rows}件 / 合計 {len(merged_df)} 件を保存しました。")
-                    except Exception as e:
-                        st.warning(f"FTPアップロード失敗: {e}")
-                        st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_database_add.csv")
-
-
-
-        st.markdown("---") # 区切り線
-
-        # 3. 終了日時フィルタリング
-        selected_end_date = st.selectbox(
-            "終了日時で絞り込み",
-            options=["全期間"] + unique_end_dates,
-            key='admin_end_date_filter',
-        )
-
-        # 4. 開始日時フィルタリング
-        selected_start_date = st.selectbox(
-            "開始日時で絞り込み",
-            options=["全期間"] + unique_start_dates,
-            key='admin_start_date_filter',
-        )
-
-        st.markdown("---") # 区切り線
-        
-                # 1. 最新化ボタン
-        st.button(
-            "🔄 終了前イベントの最新化", 
-            on_click=refresh_data, 
-            key="admin_refresh_button"
-        )
-
-        st.markdown("---") # 区切り線
-        
-        # 2. 全量表示トグル
-        st.checkbox(
-            "全量表示（期間フィルタ無効）", 
-            value=st.session_state.admin_full_data,
-            key="admin_full_data_checkbox_internal",
-            on_change=toggle_full_data
-        )
-
-        st.markdown("") #空白行 
-        
-                                
-    # 4. プルダウンフィルタの適用
-    if selected_end_date != "全期間":
-        df_filtered = df_filtered[df_filtered["終了日時"].str.startswith(selected_end_date)].copy()
-    if selected_start_date != "全期間":
-        df_filtered = df_filtered[df_filtered["開始日時"].str.startswith(selected_start_date)].copy()
-        
-    # 4.5. ライバー名の最新化 (APIから取得し、キャッシュ)
-    unique_room_ids = [rid for rid in df_filtered["ルームID"].unique() if rid and str(rid) != '']
-    room_ids_to_fetch = [rid for rid in unique_room_ids if str(rid) not in st.session_state.room_name_cache]
-
-    if room_ids_to_fetch:
-        # ライバーモードの挙動に合わせ、spinnerを削除
-        for room_id_val in room_ids_to_fetch:
-            room_id_str = str(room_id_val)
-            name = get_room_name(room_id_str)
-            if name:
-                st.session_state.room_name_cache[room_id_str] = name
-            time.sleep(0.05) # API負荷軽減
-
-    df_filtered["__display_liver_name"] = df_filtered.apply(
-        lambda row: st.session_state.room_name_cache.get(str(row["ルームID"])) or row["ライバー名"], 
-        axis=1
-    )
-    # -------------------------------------------------------------------
-
-    # 6. ソート (終了日時 → イベントID → ポイント の降順)
-    # 「ポイント」は数値化してからソートする
-    df_filtered["__point_num"] = pd.to_numeric(df_filtered["ポイント"], errors="coerce").fillna(0)
-
-    df_filtered.sort_values(
-        ["__end_ts", "event_id", "__point_num"],  # 第3条件にポイント列を追加
-        ascending=[False, False, False],          # すべて降順
-        na_position='last',
-        inplace=True
-    )
-    
-    # 7. 表示整形（イベントID・ルームIDを末尾に追加）
-    disp_cols = ["ライバー名", "イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル", "event_id", "ルームID"]
-
-    # event_id が存在しない場合の防御
-    if "event_id" not in df_filtered.columns:
-        df_filtered["event_id"] = ""
-
-    df_show = df_filtered[disp_cols + ["is_ongoing", "is_end_today", "URL", "__display_liver_name"]].copy()
-
-    if df_show.empty:
-        st.warning("フィルタリング条件に合うデータが見つかりません。")
-        st.stop()
-        
-elif room_id != "":
-    # --- ライバーモードのデータ処理（既存ロジックを維持）---
-    
-    # 1. フィルタリング (ルームID)
-    df = df_all[df_all["ルームID"].astype(str) == str(room_id)].copy()
-    if df.empty:
-        room_name = get_room_name(room_id)
-        st.warning(f"ルームID: {room_id} (ルーム名: {room_name}) のデータが見つかりません。")
-        st.stop()
-        
-    # 2. 日付整形とタイムスタンプ追加
-    df["開始日時"] = df["開始日時"].apply(fmt_time)
-    df["終了日時"] = df["終了日時"].apply(fmt_time)
-    df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
-    df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
-    #df = df.sort_values("__start_ts", ascending=False)
-    df = df.sort_values("__end_ts", ascending=False)
-    
-    # 3. 2023年9月1日以降のイベントにフィルタリング
-    df = df[df["__start_ts"] >= FILTER_START_TS].copy()
-    
-    # 4. 開催中判定
-    now_ts = int(datetime.now(JST).timestamp())
-    # 修正前: df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
-    df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts - 3600) # ★★★ 修正後 ★★★
-
-    # 5. 開催中イベント最新化 (ライバーモードは実行時に自動最新化)
-    ongoing = df[df["is_ongoing"]]
-    for idx, row in ongoing.iterrows():
-        event_id = row.get("event_id")
-        stats = get_event_stats_from_roomlist(event_id, room_id)
-        if stats:
-            # ライバーモードはローカルの df を更新
-            df.at[idx, "順位"] = stats.get("rank") or "-"
-            df.at[idx, "ポイント"] = stats.get("point") or 0
-            df.at[idx, "レベル"] = stats.get("quest_level") or 0
-        time.sleep(0.1)
-    
-    # 6. ポイントランキングを計算し、ハイライトCSSを決定するロジック
-    df['__point_num'] = pd.to_numeric(df['ポイント'], errors='coerce')
-    df_valid_points = df.dropna(subset=['__point_num']).copy()
-    df_valid_points['__rank'] = df_valid_points['__point_num'].rank(method='dense', ascending=False)
-    df['__highlight_style'] = ''
-    for rank, style in HIGHLIGHT_COLORS.items():
-        if not df_valid_points.empty:
-            target_indices = df_valid_points[df_valid_points['__rank'] == rank].index
-            if not target_indices.empty:
-                df.loc[target_indices, '__highlight_style'] = style
-    
-    # 7. ソートの適用
-    if st.session_state.sort_by_point:
-        df.sort_values(
-            ['__point_num', '__start_ts'], 
-            ascending=[False, False], 
-            na_position='last', 
-            inplace=True
-        )
-
-    # 8. UI/表示整形
-    # ライバー名表示のカスタムCSS定義 (既存ロジックを維持)
-    st.markdown("""
-    <style>
-    /* ルーム名ラベルのCSS (st.info風) */
-    .room-label-box {
-        background-color: #f0f2f6; /* st.infoの薄い青背景に近い色 */
-        border: 1px solid #c9d0d8; /* st.infoの薄い枠線に近い色 */
-        border-left: 5px solid #0b66c2; /* st.infoの左側の青い縦線 */
-        padding: 10px 15px;
-        margin-bottom: 0px;
-        border-radius: 6px;
-        color: #0b66c2;
-        font-size: 17px;
-    }
-    .room-label-box a {
-        color: inherit;
-        font-weight: 700;
-        text-decoration: underline;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    room_name = get_room_name(room_id)
-    link_url = f"https://www.showroom-live.com/room/profile?room_id={room_id}"
-    label_html = f"""
-    <div class="room-label-box">
-        🎤 
-        <a href="{link_url}" target="_blank">
-            {room_name}
-        </a> 
-        の参加イベント履歴
-    </div>
-    """
-    st.markdown(label_html, unsafe_allow_html=True)
-    
-    
-    # ===============================
-    # 🔍 プロフィール情報取得と表示
-    # ===============================
-    try:
-        prof_res = requests.get(f"https://www.showroom-live.com/api/room/profile?room_id={room_id}", headers=HEADERS, timeout=6)
-        if prof_res.status_code == 200:
-            prof_json = prof_res.json()
-            room_level = prof_json.get("room_level", "-")
-            show_rank = prof_json.get("show_rank_subdivided", "-")
-            follower_num = prof_json.get("follower_num", "-")
-            live_cont_days = prof_json.get("live_continuous_days", "-")
-
-            # テーブル形式で表示
-            st.markdown("""
-            <style>
-            .profile-table {
-                border-collapse: collapse;
-                width: 60%;
-                margin-bottom: 20px;
-                font-size: 14px;
-                text-align: center;
-            }
-            .profile-table th, .profile-table td {
-                border: 1px solid #ddd;
-                padding: 8px 10px;
-                text-align: center !important;
-            }
-            .profile-table th {
-                background-color: #0b66c2;
-                color: white;
-            }            
-
-            /* ===========================================
-               📱 スマートフォン（767px以下）対応CSS
-               =========================================== */
-            @media screen and (max-width: 767px) {
-                /* プロフィールテーブル */
-                .profile-table {
-                    width: 100% !important;
-                    font-size: 12px !important;
-                }
-                .profile-table th, .profile-table td {
-                    padding: 6px !important;
-                }
-
-                /* イベントテーブル全体を横スクロール可能に */
-                .scroll-table {
-                    overflow-x: auto !important;
-                    width: 100% !important;
-                    display: block;
-                    -webkit-overflow-scrolling: touch; /* iPhone慣性スクロール */
-                }
-                .scroll-table table {
-                    width: 1080px !important; /* テーブル幅を固定して横スクロール */
-                }
-
-                /* テキストが詰まりすぎないよう微調整 */
-                table {
-                    font-size: 12px !important;
-                }
-
-                /* スマホではボタンを少し大きく */
-                .rank-btn-link {
-                    padding: 6px 8px !important;
-                    font-size: 13px !important;
-                }
-            }
             
-            /* ===========================================
-               💻 タブレット（768〜1024px）調整
-               =========================================== */
-            @media screen and (min-width: 768px) and (max-width: 1024px) {
-                .profile-table { width: 80% !important; font-size: 13px !important; }
-                .scroll-table table { width: 1280px !important; }
-                table { font-size: 13px !important; }
-            }
-            </style>            
-            """, unsafe_allow_html=True)
 
-            st.markdown(f"""
-            <table class="profile-table">
-                <thead><tr>
-                    <th>ルームレベル</th>
-                    <th>SHOWランク</th>
-                    <th>フォロワー数</th>
-                    <th>まいにち配信</th>
-                </tr></thead>
-                <tbody><tr>
-                    <td>{room_level}</td>
-                    <td>{show_rank}</td>
-                    <td>{follower_num}</td>
-                    <td>{live_cont_days} 日</td>
-                </tr></tbody>
-            </table>
-            """, unsafe_allow_html=True)
-            #<td>{follower_num:,}</td> # カンマ区切りの記述
-    except Exception as e:
-        st.warning(f"プロフィール情報を取得できませんでした: {e}")
-
-    
-
-    disp_cols = ["イベント名", "開始日時", "終了日時", "順位", "ポイント", "レベル"]
-    df_show = df[disp_cols + ["is_ongoing", "__highlight_style", "URL", "ルームID"]].copy()
-
-# ----------------------------------------------------------------------
-# HTMLテーブル生成関数 (ライバーモード用 - 修正なし)
-# ----------------------------------------------------------------------
-def make_html_table_user(df, room_id):
-    """ライバー用HTMLテーブルを生成（貢献ランクボタン風リンクあり、ポイントハイライトあり、開催中黄色ハイライト）"""
-    html = """
-    <style>
-    .scroll-table {
-    max-height: 520px;
-    overflow-y: auto;
-    overflow-x: auto;      /* 👈 横スクロールを許可 */
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    text-align: center;
-    width: 100%;
-    -webkit-overflow-scrolling: touch; /* 👈 iPhoneなどの慣性スクロール対応 */
-    }
-    table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
-    thead th { position: sticky; top: 0; background: #0b66c2; color: #fff; padding: 5px; text-align: center; border: 1px solid #0b66c2; z-index: 10; }
-    tbody td { padding: 5px; border-bottom: 1px solid #f2f2f2; text-align: center; vertical-align: middle; word-wrap: break-word; }
-    table col:nth-child(1) { width: 46%; } table col:nth-child(2) { width: 11%; } table col:nth-child(3) { width: 11%; } 
-    table col:nth-child(4) { width: 6%; } table col:nth-child(5) { width: 9%; } table col:nth-child(6) { width: 6%; } 
-    table col:nth-child(7) { width: 11%; } 
-    tr.ongoing{background:#fff8b3;}
-    a.evlink{color:#0b57d0;text-decoration:underline;}
-    .rank-btn-link { background:#0b57d0; color:white !important; border:none; padding:4px 6px; border-radius:4px; cursor:pointer; text-decoration:none; display: inline-block; font-size: 12px; }
-    
-    table tbody td:nth-child(1) {
-        text-align: left;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    a.evlink {
-        color:#0b57d0;
-        text-decoration:underline;
-        display: block;
-        width: 100%;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    </style>
-    <div class="scroll-table"><table>
-    <colgroup><col><col><col><col><col><col><col></colgroup>
-    <thead><tr>
-    <th>イベント名</th><th>開始日時</th><th>終了日時</th>
-    <th>順位</th><th>ポイント</th><th>レベル</th><th>貢献ランク</th>
-    </tr></thead><tbody>
-    """
-    for _, r in df.iterrows():
-        cls = "ongoing" if r.get("is_ongoing") else ""
-        url_value = r.get("URL")
-        url = url_value if pd.notna(url_value) and url_value else ""
-        name = r.get("イベント名") or ""
-        
-        point_raw = r.get('ポイント')
-        point = f"{float(point_raw):,.0f}" if pd.notna(point_raw) and str(point_raw) not in ('-', '') else str(point_raw or '')
-        
-        event_link = f'<a class="evlink" href="{url}" target="_blank">{name}</a>' if url else name
-        contrib_url = generate_contribution_url(url, room_id)
-        
-        if contrib_url:
-            button_html = f'<a href="{contrib_url}" target="_blank" class="rank-btn-link">貢献ランク</a>'
-        else:
-            button_html = "<span>URLなし</span>"
-
-        highlight_style = r.get('__highlight_style', '')
-        point_td = f"<td style=\"{highlight_style}\">{point}</td>"
-
-
-        html += f'<tr class="{cls}">'
-        html += f"<td>{event_link}</td><td>{r['開始日時']}</td><td>{r['終了日時']}</td>"
-        html += f"<td>{r['順位']}</td>{point_td}<td>{r['レベル']}</td><td>{button_html}</td>"
-        html += "</tr>"
-        
-    html += "</tbody></table></div>"
-    return html
-
-# ----------------------------------------------------------------------
-# HTMLテーブル生成関数 (管理者モード用 - 修正なし)
-# ----------------------------------------------------------------------
-def make_html_table_admin(df):
-    """管理者用HTMLテーブルを生成（ライバー名列あり、ポイントハイライトなし、終了当日ハイライトあり）"""
-    
-    # END_TODAY_HIGHLIGHTからカラーコードを抽出し、CSSの二重定義を回避
-    end_today_color_code = END_TODAY_HIGHLIGHT.replace('background-color: ', '').replace(';', '')
-    
-    # URL/貢献ランク列を削除した7列構成
-    html = f"""
-    <style>
-    .scroll-table {{ max-height: 520px; overflow-y: auto; overflow-x: auto;　border: 1px solid #ddd; border-radius: 6px; text-align: center; width: 100%; -webkit-overflow-scrolling: touch;}}
-    table {{ width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }}
-    thead th {{ position: sticky; top: 0; background: #0b66c2; color: #fff; padding: 5px; text-align: center; border: 1px solid #0b66c2; z-index: 10; }}
-    tbody td {{ padding: 5px; border-bottom: 1px solid #f2f2f2; text-align: center; vertical-align: middle; word-wrap: break-word; }}
-    /* 管理者用: カラム幅の指定（URL列削除に合わせて調整） */
-    table col:nth-child(1) {{ width: 22%; }} /* ライバー名 */
-    table col:nth-child(2) {{ width: 22%; }} /* イベント名 */
-    table col:nth-child(3) {{ width: 11%; }} /* 開始日時 */
-    table col:nth-child(4) {{ width: 11%; }} /* 終了日時 */
-    table col:nth-child(5) {{ width: 5%; }}  /* 順位 */
-    table col:nth-child(6) {{ width: 8%; }} /* ポイント */
-    table col:nth-child(7) {{ width: 5%; }}  /* レベル */
-    table col:nth-child(8) {{ width: 8%; }}  /* イベントID */
-    table col:nth-child(9) {{ width: 8%; }}  /* ルームID */
-    
-    /* 修正: background-colorプロパティを正しく適用 */
-    tr.end_today{{background-color:{end_today_color_code};}} /* 終了日時当日ハイライト */
-    tr.ongoing{{background:#fff8b3;}} /* 開催中黄色ハイライト */
-    a.evlink{{color:#0b57d0;text-decoration:underline;}}
-    .rank-btn-link {{ background:#0b57d0; color:white !important; border:none; padding:4px 6px; border-radius:4px; cursor:pointer; text-decoration:none; display: inline-block; font-size: 12px; }}
-    .liver-link {{ color:#0b57d0; text-decoration:underline; }}
-
-    /* ライバー名 (1列目) とイベント名 (2列目) の省略表示設定 */
-    table tbody td:nth-child(1),
-    table tbody td:nth-child(2) {{ 
-        text-align: left;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }}
-    a.evlink, .liver-link {{
-        color:#0b57d0;
-        text-decoration:underline;
-        display: block;
-        width: 100%;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }}
-    
-    </style>
-    <div class="scroll-table"><table>
-    <colgroup><col><col><col><col><col><col><col><col><col></colgroup>
-    <thead><tr>
-    <th>ライバー名</th><th>イベント名</th><th>開始日時</th><th>終了日時</th>
-    <th>順位</th><th>ポイント</th><th>レベル</th><th>イベントID</th><th>ルームID</th>
-    </tr></thead><tbody>
-    """
-    for _, r in df.iterrows():
-        # ハイライトクラス決定: 終了当日が優先、そうでなければ開催中
-        cls = "end_today" if r.get("is_end_today") else ("ongoing" if r.get("is_ongoing") else "")
-
-        url_value = r.get("URL")
-        room_id_value = r.get("ルームID")
-        
-        url = url_value if pd.notna(url_value) and url_value else ""
-        room_id = room_id_value if pd.notna(room_id_value) and room_id_value else ""
-
-        name = r.get("イベント名") or ""
-        liver_name = r.get("__display_liver_name") or r.get("ライバー名") or ""
-        
-        point_raw = r.get('ポイント')
-        point = f"{float(point_raw):,.0f}" if pd.notna(point_raw) and str(point_raw) not in ('-', '') else str(point_raw or '')
-        
-        event_link = f'<a class="evlink" href="{url}" target="_blank">{name}</a>' if url else name
-        
-        # ライバー名リンク (別タブ)
-        liver_link_url = f"https://www.showroom-live.com/room/profile?room_id={room_id}"
-        liver_link = f'<a class="liver-link" href="{liver_link_url}" target="_blank">{liver_name}</a>' if room_id else liver_name
-
-        html += f'<tr class="{cls}">'
-        html += f"<td>{liver_link}</td><td>{event_link}</td><td>{r['開始日時']}</td><td>{r['終了日時']}</td>"
-        html += f"<td>{r['順位']}</td><td>{point}</td><td>{r['レベル']}</td>"
-        html += f"<td>{r.get('event_id', '')}</td><td>{r.get('ルームID', '')}</td>"  # ★ 追加行 ★
-        html += "</tr>"
-        
-    html += "</tbody></table></div>"
-    return html
-
-
-# ----------------------------------------------------------------------
-# ★★★ 表示（管理者/ライバーで分岐） ★★★
-# ----------------------------------------------------------------------
-if is_admin:
-    # 管理者モードの表示
-    st.markdown(make_html_table_admin(df_show), unsafe_allow_html=True)
-    
-    end_today_color = END_TODAY_HIGHLIGHT.replace('background-color: ', '').replace(';', '')
-    #st.caption(f"2023年9月以降に開始された参加イベントを表示しています。黄色行は開催中（終了日時が未来）のイベントです。赤っぽい行（{end_today_color}）は終了日時が本日のイベントです。")
-    st.caption(f"")
-    
-    # CSVダウンロード
-    cols_to_drop = [c for c in ["is_ongoing", "is_end_today", "__point_num", "URL", "ルームID", "__display_liver_name"] if c in df_show.columns]
-    csv_bytes = df_show.drop(columns=cols_to_drop).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-    st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_history_admin.csv", key="admin_csv_download")
-    
-
-
-    # ==========================================================
-    # 🧩 管理者モード追加機能：ユーザーID登録・確認セクション
-    # ==========================================================
-    st.markdown("---")
-    st.markdown("### 🧩 ユーザーID登録・確認（管理者専用オプション）")
-
-    ADD_ROOM_LIST_URL = "https://mksoul-pro.com/showroom/file/room_list_add.csv"
-
-    import ftplib, io
-
-    def upload_add_room_csv(df_add):
-        try:
-            ftp_info = st.secrets.get("ftp", {})
-            host = ftp_info.get("host")
-            user = ftp_info.get("user")
-            password = ftp_info.get("password")
-            if not host or not user or not password:
-                st.error("FTP設定が見つかりません。st.secrets['ftp'] を確認してください。")
-                return False
-            csv_bytes = df_add.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-            with ftplib.FTP(host, timeout=30) as ftp:
-                ftp.login(user, password)
-                with io.BytesIO(csv_bytes) as bf:
-                    bf.seek(0)
-                    ftp.storbinary("STOR /mksoul-pro.com/showroom/file/room_list_add.csv", bf)
-            return True
-        except Exception as e:
-            st.error(f"FTPアップロードに失敗しました: {e}")
-            return False
-
-    # --- 既存登録済みデータ読込 ---
-    try:
-        df_add = pd.read_csv(ADD_ROOM_LIST_URL, dtype=str)
-        if "ルームID" not in df_add.columns:
-            df_add = pd.DataFrame(columns=["ルームID"])
-    except Exception:
-        df_add = pd.DataFrame(columns=["ルームID"])
-
-    # --- ユーザーID登録フォーム ---
-    st.markdown("#### 🔢 新規ユーザーID登録")
-    new_room_id = st.text_input("ルームIDを入力してください（数値のみ）", key="new_room_id_input", placeholder="例：123456")
-
-    col_add1, col_add2 = st.columns([1, 3])
-    with col_add1:
-        if st.button("➕ 登録", key="add_room_button"):
-            if new_room_id and new_room_id.strip().isdigit():
-                new_room_id = new_room_id.strip()
-                if new_room_id not in df_add["ルームID"].astype(str).values:
-                    df_add = pd.concat([df_add, pd.DataFrame({"ルームID": [new_room_id]})], ignore_index=True)
-                    success = upload_add_room_csv(df_add)
-                    if success:
-                        st.success(f"✅ ルームID {new_room_id} を登録しました。")
-                        time.sleep(1)
-                        st.rerun()
-                else:
-                    st.warning("⚠️ 既に登録済みのルームIDです。")
-            else:
-                st.warning("⚠️ 数値のルームIDを入力してください。")
-
-    # --- 登録済みリスト表示 ---
-    st.markdown("#### 📋 登録済みユーザー一覧")
-
-    # --- 登録済みリスト表示 ---
-    if df_add.empty:
-        st.info("現在、登録済みのルームIDはありません。")
-    else:
-        profiles = []
-        for rid in df_add["ルームID"].dropna().astype(str).tolist():
-            prof = http_get_json(API_ROOM_PROFILE, params={"room_id": rid})
-            if prof:
-                profiles.append({
-                    "ルーム名": prof.get("room_name", ""),
-                    "SHOWランク": prof.get("show_rank_subdivided", "-"),
-                    "フォロワー数": prof.get("follower_num", "-"),
-                    "まいにち配信": prof.get("live_continuous_days", "-"),
-                    "ルームID": rid
-                })
-            else:
-                profiles.append({
-                    "ルーム名": "(取得失敗)",
-                    "SHOWランク": "-",
-                    "フォロワー数": "-",
-                    "まいにち配信": "-",
-                    "ルームID": rid
-                })
-            time.sleep(0.2)
-
-        # DataFrame化
-        df_prof = pd.DataFrame(profiles)
-
-        # --- HTMLテーブルの生成（イベント一覧に合わせた見た目） ---
-        html = """
-        <style>
-        .add-table { width: 100%; border-collapse: collapse; font-size:14px; margin-top:8px; }
-        .add-table thead th { background:#0b66c2; color:#fff; padding:8px; border:1px solid #e8eef7; text-align:center; position: sticky; top: 0; z-index: 5; }
-        .add-table td { padding:8px; border:1px solid #f2f6fb; text-align:center !important; vertical-align: middle; }
-        .add-table td.left { text-align:left !important; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px; }
-        .add-table .link { color:#0b57d0; text-decoration:underline; }
-        .add-table-wrapper { max-height: 420px; overflow-y: auto; border:1px solid #ddd; border-radius:6px; padding:4px; }
-        </style>
-        <div class="add-table-wrapper"><table class="add-table">
-        <thead><tr>
-          <th>ルーム名</th><th>SHOWランク</th><th>フォロワー数</th><th>まいにち配信</th><th>ルームID</th>
-        </tr></thead><tbody>
-        """
-
-        for _, row in df_prof.iterrows():
-            room_name = row.get("ルーム名") or ""
-            show_rank = row.get("SHOWランク") or "-"
-            follower = row.get("フォロワー数")
-            try:
-                follower_fmt = f"{int(follower):,}" if str(follower) not in ("-", "") and pd.notna(follower) else (str(follower) if follower is not None else "-")
-            except Exception:
-                follower_fmt = str(follower or "-")
-            live_days = row.get("まいにち配信") or "-"
-            rid = row.get("ルームID") or ""
-            # ルーム名にプロフィールページへのリンクを付与
-            if rid:
-                room_link = f'<a class="link" href="https://www.showroom-live.com/room/profile?room_id={rid}" target="_blank">{room_name}</a>'
-            else:
-                room_link = room_name
-
-            html += "<tr>"
-            html += f'<td class="left">{room_link}</td>'
-            html += f"<td>{show_rank}</td>"
-            html += f"<td>{follower_fmt}</td>"
-            html += f"<td>{live_days} 日</td>"
-            html += f"<td>{rid}</td>"
-            html += "</tr>"
-
-        html += "</tbody></table></div>"
-
-        st.markdown(html, unsafe_allow_html=True)
-        st.caption(f"")
-
-        # CSVダウンロード（既存ボタンと同じ）
-        csv_bytes = df_prof.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-        st.download_button(
-            "登録ユーザー一覧をCSVでダウンロード",
-            data=csv_bytes,
-            file_name="room_list_add_view.csv",
-            key="download_add_csv"
-        )
-    
-    
-
-else:
-    # ライバーモードの表示 (既存ロジック)
-    
-    # ソートボタンの表示
-    button_label = (
-        "📅 デフォルト表示に戻す (終了日時降順)"
-        if st.session_state.sort_by_point
-        else "🏆 ポイントの高い順にソート"
-    )
-
-    st.button(
-        button_label, 
-        on_click=toggle_sort_by_point, 
-        key="sort_toggle_button"
-    )
-
-    # ★★★ 修正箇所: ここに最新化ボタンを追加 ★★★
-    st.button(
-        "🔄 終了前イベントの最新化", 
-        on_click=refresh_data,  # ← 追加
-        key="librarian_refresh_button"
-    )
-    # ★★★ 修正箇所ここまで ★★★
-    
-    st.markdown(make_html_table_user(df_show, room_id), unsafe_allow_html=True)
-    st.caption("2023年9月以降に開始された参加イベントを表示しています。黄色ハイライト行は終了前のイベントです。※ハイライトはイベント終了後、1時間後に消えます。")
-
-    # CSV出力
-    cols_to_drop = [c for c in ["is_ongoing", "__highlight_style", "URL", "ルームID"] if c in df_show.columns]
-    csv_bytes = df_show.drop(columns=cols_to_drop).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-    st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_history.csv", key="user_csv_download")
+if __name__ == "__main__":
+    main()
