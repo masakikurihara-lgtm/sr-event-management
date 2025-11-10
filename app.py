@@ -449,7 +449,7 @@ if is_admin:
         for col in updated_cols:
              # df の該当する列を、df_all の更新された値で上書きする
              # loc + values を使用して、Pandasのインデックス参照オーバーヘッドを回避
-             #df[col] = st.session_state.df_all.loc[current_indices, col].values 
+             df[col] = st.session_state.df_all.loc[current_indices, col].values 
 
         # 開催中フラグの再計算のみ実行
         now_ts = int(datetime.now(JST).timestamp())
@@ -462,7 +462,7 @@ if is_admin:
 
 
     # 4. フィルタリングの適用（最終フィルタリングまで）
-    df_filtered = df.copy() 
+    #df_filtered = df.copy() 
 
     # 2023年9月1日以降に開始のイベントに限定（ライバーモードと同じ基準）
     df_filtered = df_filtered[
