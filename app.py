@@ -132,59 +132,39 @@ def load_event_db(url):
         df[c] = df[c].replace('', np.nan).fillna('')
     return df
 
-# ----- 追加する関数（非侵襲） -----
-def load_event_db_fast(url, days=10):
+def load_event_db(url: str, filter_recent_days: int | None = None):
     """
-    管理者モードの初期表示用に限定的にCSVを読み込む軽量ローダ。
-    - 終了日時が空 または cutoff（JST 現在 - days）以降 の行のみを収集して返す。
-    - 返却 DataFrame のカラム名は既存と互換となるよう補完する。
-    - この関数は st.session_state を参照しない（呼び出し側でフラグを渡す想定）。
+    イベントDBを読み込む。
+    filter_recent_days を指定した場合、
+    終了日時がその日数以内（または空欄）の行のみを読み込む軽量モードになる。
     """
     try:
-        r = requests.get(url, headers=HEADERS, timeout=12)
-        r.raise_for_status()
-        txt = r.content.decode("utf-8-sig")
+        csv_data = requests.get(url, timeout=10)
+        csv_data.raise_for_status()
+        decoded = csv_data.content.decode("utf-8")
+        df = pd.read_csv(io.StringIO(decoded))
     except Exception as e:
-        # 失敗時は空DF（既存の挙動を壊さない）
+        st.error(f"❌ イベントDBの取得に失敗しました: {e}")
         return pd.DataFrame()
 
-    cutoff_date = (datetime.now(JST) - timedelta(days=days)).strftime("%Y/%m/%d")
-    # chunksizeで分割して読み、条件一致行のみを集める
-    try:
-        chunks = pd.read_csv(io.StringIO(txt), dtype=object, keep_default_na=False, chunksize=2000)
-    except Exception:
-        return pd.DataFrame()
+    # 🔽 軽量化モード（filter_recent_days 指定時のみ）
+    if filter_recent_days is not None:
+        limit_ts = (datetime.now(JST) - timedelta(days=filter_recent_days)).timestamp()
 
-    parts = []
-    for chunk in chunks:
-        if "終了日時" not in chunk.columns:
-            continue
-        chunk = chunk.fillna("")
-        # 終了日時が空 OR 文字列で cutoff_date 以上（CSVの 'YYYY/MM/DD' 比較前提）
-        mask = (chunk["終了日時"].astype(str) == "") | (chunk["終了日時"].astype(str) >= cutoff_date)
-        sub = chunk.loc[mask]
-        if not sub.empty:
-            parts.append(sub)
+        def safe_parse_end(x):
+            try:
+                return datetime.strptime(str(x).strip(), "%Y/%m/%d %H:%M").timestamp()
+            except Exception:
+                return None
 
-    if parts:
-        df_sub = pd.concat(parts, ignore_index=True)
-    else:
-        df_sub = pd.DataFrame()
+        df["__end_ts"] = df["終了日時"].apply(safe_parse_end)
+        df = df[
+            (df["__end_ts"].isna()) | (df["__end_ts"] >= limit_ts)
+        ].copy()
+        # 不要になった列を即削除（軽量化）
+        df.drop(columns=["__end_ts"], inplace=True, errors="ignore")
 
-    # カラム名整形（既存互換）
-    if not df_sub.empty:
-        df_sub.columns = [c.replace("_fmt", "").strip() for c in df_sub.columns]
-
-    expected_cols = ["event_id", "URL", "ルームID", "イベント名", "開始日時", "終了日時",
-                     "順位", "ポイント", "レベル", "ライバー名"]
-    for c in expected_cols:
-        if c not in df_sub.columns:
-            df_sub[c] = ""
-        if not df_sub.empty:
-            df_sub[c] = df_sub[c].replace('', np.nan).fillna('')
-
-    return df_sub
-# ----- 追加ここまで -----
+    return df
 
 
 
@@ -418,12 +398,17 @@ if not do_show:
 
 # 🎯 常に最新CSVを取得する（セッションキャッシュを無効化）
 if st.session_state.get("refresh_trigger", False) or "df_all" not in st.session_state:
-    #df_all = load_event_db(EVENT_DB_URL)
-    df_all = load_event_db(EVENT_DB_ACTIVE_URL)
+    # 管理者モードで全量表示OFFのときは軽量読み込み
+    if is_admin and not st.session_state.get("admin_full_data", False):
+        df_all = load_event_db(EVENT_DB_ACTIVE_URL, filter_recent_days=10)
+    else:
+        df_all = load_event_db(EVENT_DB_ACTIVE_URL)
+
     st.session_state.df_all = df_all
     st.session_state.refresh_trigger = False
 else:
     df_all = st.session_state.df_all.copy()
+
 
 
 
@@ -440,31 +425,20 @@ if is_admin:
     # --- 管理者モードのデータ処理 ---
     # st.info(f"**管理者モード**") # ← 削除 (ユーザー要望)
 
-    # ✅ 【改善】まず event_database.csv の段階で「終了10日前以降 or 終了日時が空欄」のみに限定
-    df_pre = df_all.copy()
+    # 1. 管理者向け：デフォルト表示（admin_full_data == False）の場合は軽量ローダで限定読み込み
     if not st.session_state.get("admin_full_data", False):
-        def safe_parse_end(x):
-            try:
-                return datetime.strptime(str(x).strip(), "%Y/%m/%d %H:%M").timestamp()
-            except Exception:
-                return None
-
-        df_pre["__end_ts"] = df_pre["終了日時"].apply(safe_parse_end)
-        df_pre = df_pre[
-            (df_pre["__end_ts"].apply(lambda x: x is None or x >= FILTER_END_DATE_TS_DEFAULT))
-        ].copy()
+        # admin の初期表示は「最近10日以内に終了 or 終了日時が空欄」のみを扱う軽量DataFrameを使う
+        df = load_event_db_fast(EVENT_DB_ACTIVE_URL, days=10)
+        # 万一CSV取得エラーや空の場合は既存 df_all にフォールバック（安全策）
+        if df.empty:
+            df = df_all.copy()
     else:
-        df_pre = df_all.copy()
-
-    # この時点で対象は既に10日分程度に限定済み
-    df = df_pre.copy()
-
-    # ここから既存の整形処理（fmt_time, parse_to_ts など）はそのまま
+        # 全量表示ON（既存と完全互換）
+        df = df_all.copy()
     df["開始日時"] = df["開始日時"].apply(fmt_time)
     df["終了日時"] = df["終了日時"].apply(fmt_time)
     df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
     df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
-
     
     # 2. 開催中判定
     now_ts = int(datetime.now(JST).timestamp())
