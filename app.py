@@ -1110,20 +1110,33 @@ if is_admin:
 
     if room_ids_to_fetch:
         import time
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         st.info(f"デバッグ: ライバー名キャッシュ更新開始 ({len(room_ids_to_fetch)} 件)")
         t_liver_start = time.time()
 
-        for room_id_val in room_ids_to_fetch:
-            room_id_str = str(room_id_val)
+        def fetch_room_name(room_id_str):
+            """個別ルーム名取得（APIラッパ）"""
             name = get_room_name(room_id_str)
             if name:
-                st.session_state.room_name_cache[room_id_str] = name
-            time.sleep(0.05)  # API負荷軽減
+                return (room_id_str, name)
+            return None
+
+        results = []
+        # 並列処理で最大8件ずつAPI呼び出し
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(fetch_room_name, str(rid)) for rid in room_ids_to_fetch]
+            for future in as_completed(futures):
+                res = future.result()
+                if res:
+                    rid, name = res
+                    st.session_state.room_name_cache[rid] = name
 
         elapsed_liver = time.time() - t_liver_start
         st.info(f"デバッグ: ライバー名キャッシュ更新完了 ({len(st.session_state.room_name_cache)} 件, {elapsed_liver:.2f} 秒)")
     else:
         st.info("デバッグ: ライバー名キャッシュ更新はスキップ（全件キャッシュ済み）")
+
 
 
     df_filtered["__display_liver_name"] = df_filtered.apply(
