@@ -644,7 +644,7 @@ if is_admin:
                             ids = [int(ev["event_id"]) for ev in data["event_list"] if "event_id" in ev]
                             if ids:
                                 latest_id = max(latest_id, max(ids))
-                            time.sleep(0.2)
+                            time.sleep(0.1)
                         if latest_id:
                             st.success(f"SHOWROOM開催予定イベントの最新ID: {latest_id}")
                         else:
@@ -655,7 +655,7 @@ if is_admin:
             st.markdown("---")
             st.markdown("#### 🚀 データベース更新実行")
 
-            start_id = st.number_input("スキャン開始イベントID", min_value=1, value=40400, step=1)
+            start_id = st.number_input("スキャン開始イベントID", min_value=1, value=40500, step=1)
             end_id = st.number_input("スキャン終了イベントID", min_value=start_id, value=start_id + 500, step=1)
             max_workers = st.number_input("並列処理数", min_value=1, max_value=30, value=5)
             save_interval = st.number_input("途中保存間隔（件）", min_value=50, value=300, step=50)
@@ -1644,7 +1644,7 @@ if is_admin:
                     "まいにち配信": "-",
                     "ルームID": rid
                 })
-            time.sleep(0.2)
+            time.sleep(0.1)
 
         # DataFrame化
         df_prof = pd.DataFrame(profiles)
