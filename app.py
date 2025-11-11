@@ -435,9 +435,7 @@ if is_admin:
     elapsed = time.time() - t0
     st.info(f"デバッグ: 管理者モード初期処理完了 ({len(df)} 件, {elapsed:.2f} 秒)")
 
-    
     # --- デバッグステップ2: 各処理時間をログ出力 ---
-
     t1 = time.time()
     now_ts = int(datetime.now(JST).timestamp())
     today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
@@ -467,13 +465,17 @@ if is_admin:
             res = future.result()
             if res:
                 idx, stats = res
-                st.session_state.df_all.at[idx, "順位"] = stats.get("rank") or "-"
-                st.session_state.df_all.at[idx, "ポイント"] = stats.get("point") or 0
-                st.session_state.df_all.at[idx, "レベル"] = stats.get("quest_level") or 0
+                # ✅ df_all と df の両方を同期更新
+                for target_df in [st.session_state.df_all, df]:
+                    target_df.at[idx, "順位"] = stats.get("rank") or "-"
+                    target_df.at[idx, "ポイント"] = stats.get("point") or 0
+                    target_df.at[idx, "レベル"] = stats.get("quest_level") or 0
+
+    # ✅ 処理結果をセッション全体に反映
+    st.session_state.df_all.update(df)
 
     elapsed = time.time() - start_time
     st.info(f"デバッグ: 開催中イベント最新化完了 ({elapsed:.2f} 秒)")
-
 
     # --- 以下フィルタリング・UI生成部 ---
     t3 = time.time()
@@ -491,7 +493,6 @@ if is_admin:
 
     st.info(f"デバッグ: 絞り込み後 = {len(df_filtered)} 件 ({time.time() - t3:.2f} 秒)")
 
-
     # 終了日時フィルタリング用の選択肢生成
     unique_end_dates = sorted(
         list(set(df_filtered["終了日時"].apply(lambda x: x.split(' ')[0] if x else '')) - {''}), 
@@ -505,8 +506,8 @@ if is_admin:
     )
 
     # 3. UIコンポーネント (フィルタ、最新化ボタン)
-    # ★★★ 修正: 横並びを廃止し、折りたためるセクション内で縦に配置する (レスポンシブ対応) ★★★
     with st.expander("⚙️ 個別機能・絞り込みオプション"):
+
         
 
         # ============================================================
