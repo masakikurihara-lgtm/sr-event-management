@@ -1452,6 +1452,8 @@ def make_html_table_user(df, room_id):
 # ----------------------------------------------------------------------
 # HTMLテーブル生成関数 (管理者モード用 - 修正なし)
 # ----------------------------------------------------------------------
+import html
+
 def make_html_table_admin(df):
     """管理者用HTMLテーブルを生成（ライバー名列あり、ポイントハイライトなし、終了当日ハイライトあり）"""
     
@@ -1519,8 +1521,10 @@ def make_html_table_admin(df):
         url = url_value if pd.notna(url_value) and url_value else ""
         room_id = room_id_value if pd.notna(room_id_value) and room_id_value else ""
 
-        name = r.get("イベント名") or ""
-        liver_name = r.get("__display_liver_name") or r.get("ライバー名") or ""
+        # name = r.get("イベント名") or ""
+        # liver_name = r.get("__display_liver_name") or r.get("ライバー名") or ""
+        name = html.escape(str(r.get("イベント名") or ""))
+        liver_name = html.escape(str(r.get("__display_liver_name") or r.get("ライバー名") or ""))
         
         point_raw = r.get('ポイント')
         point = f"{float(point_raw):,.0f}" if pd.notna(point_raw) and str(point_raw) not in ('-', '') else str(point_raw or '')
