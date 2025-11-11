@@ -364,19 +364,40 @@ if not do_show:
 
 # 🎯 常に最新CSVを取得する（セッションキャッシュを無効化）
 if st.session_state.get("refresh_trigger", False) or "df_all" not in st.session_state:
-    #df_all = load_event_db(EVENT_DB_URL)
     df_all = load_event_db(EVENT_DB_ACTIVE_URL)
     st.session_state.df_all = df_all
     st.session_state.refresh_trigger = False
 else:
     df_all = st.session_state.df_all.copy()
 
-
-
 if st.session_state.df_all.empty:
     st.stop()
 
-df_all = st.session_state.df_all.copy() # コピーを使用して、元のセッションデータを汚染しないようにする
+df_all = st.session_state.df_all.copy()  # コピーを使用
+
+# ----------------------------------------------------------------------
+# 管理者モード専用: 読み込み直後に「終了日時が10日前以降」で打ち切り
+# ----------------------------------------------------------------------
+if is_admin and not st.session_state.admin_full_data:
+    filtered_rows = []
+    cutoff_ts = FILTER_END_DATE_TS_DEFAULT  # 10日前の0時基準
+    for _, row in df_all.iterrows():
+        end_ts = parse_to_ts(row.get("終了日時"))
+        # 空なら暫定的に残す
+        if not end_ts or pd.isna(end_ts):
+            filtered_rows.append(row)
+            continue
+        # 終了日時が10日前以降なら残す
+        if end_ts >= cutoff_ts:
+            filtered_rows.append(row)
+        else:
+            # CSVが終了日時降順になっているため、ここで終了
+            break
+    df_all = pd.DataFrame(filtered_rows)
+
+# ----------------------------------------------------------------------
+# 以下、既存の分岐処理に続く（ライバーモードへの影響なし）
+# ----------------------------------------------------------------------
 
 # ----------------------------------------------------------------------
 # データのフィルタリングと整形 (管理者/ライバーで分岐)
