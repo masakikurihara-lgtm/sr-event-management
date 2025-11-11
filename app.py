@@ -1546,6 +1546,21 @@ def make_html_table_admin(df):
 # ----------------------------------------------------------------------
 if is_admin:
     # 管理者モードの表示
+    # --- HTML出力前に不正文字を除去 ---
+    import re
+    def clean_text(s):
+        if not isinstance(s, str):
+            return s
+        # 制御文字や壊れたUnicode文字を削除
+        s = re.sub(r'[\x00-\x1F\x7F-\x9F\uFFFD]', '', s)
+        # 改行やタブを空白に変換
+        s = s.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ')
+        return s
+
+    # df_show 全体をクリーン化（文字列列のみ）
+    for col in df_show.select_dtypes(include=[object]).columns:
+        df_show[col] = df_show[col].apply(clean_text)
+
     st.markdown(make_html_table_admin(df_show), unsafe_allow_html=True)
     
     end_today_color = END_TODAY_HIGHLIGHT.replace('background-color: ', '').replace(';', '')
