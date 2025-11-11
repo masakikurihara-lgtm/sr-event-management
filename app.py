@@ -409,6 +409,20 @@ if is_admin:
 
     # 1. 日付整形とタイムスタンプ追加 (全量)
     df = df_all.copy()
+
+    # ✅ 終了日時のパースを一度だけ行い、10日前以前のデータはスキップ
+    cutoff_ts = FILTER_END_DATE_TS_DEFAULT  # 10日前の基準TS
+    rows_recent = []
+    for _, row in df.iterrows():
+        end_ts = parse_to_ts(row.get("終了日時"))
+        # 空 or 10日前以降のみ残す（CSVが降順ソート済みのため、古くなったらbreak）
+        if not end_ts or pd.isna(end_ts) or end_ts >= cutoff_ts:
+            rows_recent.append(row)
+        else:
+            break
+    df = pd.DataFrame(rows_recent)
+
+    # ✅ 残った70件程度にのみ fmt_time / parse_to_ts を実行（ここが超重要）
     df["開始日時"] = df["開始日時"].apply(fmt_time)
     df["終了日時"] = df["終了日時"].apply(fmt_time)
     df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
