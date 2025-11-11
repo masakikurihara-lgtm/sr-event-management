@@ -424,7 +424,7 @@ if is_admin:
         df = pd.DataFrame(rows_recent)
 
     # ✅ デバッグ出力：残った件数を確認
-    st.info(f"デバッグ: フィルタ後の件数 = {len(df)} 件")
+    # st.info(f"デバッグ: フィルタ後の件数 = {len(df)} 件")
 
 
     # ✅ 残った70件程度にのみ fmt_time / parse_to_ts を実行
@@ -435,7 +435,7 @@ if is_admin:
 
     # ✅ 処理時間の計測結果を表示
     elapsed = time.time() - t0
-    st.info(f"デバッグ: 管理者モード初期処理完了 ({len(df)} 件, {elapsed:.2f} 秒)")
+    # st.info(f"デバッグ: 管理者モード初期処理完了 ({len(df)} 件, {elapsed:.2f} 秒)")
 
     # --- デバッグステップ2: 各処理時間をログ出力 ---
     t1 = time.time()
@@ -443,12 +443,12 @@ if is_admin:
     today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
     df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts - 3600)
     df["is_end_today"] = df["__end_ts"].apply(lambda x: pd.notna(x) and today_ts <= x < (today_ts + 86400))
-    st.info(f"デバッグ: 開催中判定完了 ({time.time() - t1:.2f} 秒)")
+    # st.info(f"デバッグ: 開催中判定完了 ({time.time() - t1:.2f} 秒)")
 
     # ★★★ 修正 (5. 開催中イベント最新化 高速化版) ★★★
     start_time = time.time()
     ongoing = df[df["is_ongoing"]]
-    st.info(f"デバッグ: 開催中イベント数 = {len(ongoing)}")
+    # st.info(f"デバッグ: 開催中イベント数 = {len(ongoing)}")
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -477,7 +477,7 @@ if is_admin:
     st.session_state.df_all.update(df)
 
     elapsed = time.time() - start_time
-    st.info(f"デバッグ: 開催中イベント最新化完了 ({elapsed:.2f} 秒)")
+    # st.info(f"デバッグ: 開催中イベント最新化完了 ({elapsed:.2f} 秒)")
 
     # --- 以下フィルタリング・UI生成部 ---
     t3 = time.time()
@@ -493,7 +493,7 @@ if is_admin:
             | (df_filtered["__end_ts"].isna())
         ].copy()
 
-    st.info(f"デバッグ: 絞り込み後 = {len(df_filtered)} 件 ({time.time() - t3:.2f} 秒)")
+    # st.info(f"デバッグ: 絞り込み後 = {len(df_filtered)} 件 ({time.time() - t3:.2f} 秒)")
 
     # 終了日時フィルタリング用の選択肢生成
     #unique_end_dates = sorted(
@@ -522,7 +522,7 @@ if is_admin:
     # 空文字列をセットから除外
     unique_end_dates = [d for d in unique_end_dates if d != '']
     
-    st.info(f"デバッグ: 終了日時選択肢生成完了 ({time.time() - t4:.2f} 秒)")
+    # st.info(f"デバッグ: 終了日時選択肢生成完了 ({time.time() - t4:.2f} 秒)")
 
 
     # ---------------------------------------------
@@ -540,7 +540,7 @@ if is_admin:
     # 空文字列をセットから除外
     unique_start_dates = [d for d in unique_start_dates if d != '']
     
-    st.info(f"デバッグ: 開始日時選択肢生成完了 ({time.time() - t5:.2f} 秒)")
+    # st.info(f"デバッグ: 開始日時選択肢生成完了 ({time.time() - t5:.2f} 秒)")
 
 
     
@@ -1114,7 +1114,7 @@ if is_admin:
         import time
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        st.info(f"デバッグ: ライバー名キャッシュ更新開始 ({len(room_ids_to_fetch)} 件)")
+        # st.info(f"デバッグ: ライバー名キャッシュ更新開始 ({len(room_ids_to_fetch)} 件)")
         t_liver_start = time.time()
 
         def fetch_room_name(room_id_str):
@@ -1135,7 +1135,7 @@ if is_admin:
                     st.session_state.room_name_cache[rid] = name
 
         elapsed_liver = time.time() - t_liver_start
-        st.info(f"デバッグ: ライバー名キャッシュ更新完了 ({len(st.session_state.room_name_cache)} 件, {elapsed_liver:.2f} 秒)")
+        # st.info(f"デバッグ: ライバー名キャッシュ更新完了 ({len(st.session_state.room_name_cache)} 件, {elapsed_liver:.2f} 秒)")
     else:
         st.info("デバッグ: ライバー名キャッシュ更新はスキップ（全件キャッシュ済み）")
 
@@ -1648,7 +1648,7 @@ if is_admin:
         profiles = []
         room_ids = df_add["ルームID"].dropna().astype(str).tolist()
 
-        st.info(f"デバッグ: 登録済みルーム情報取得開始 ({len(room_ids)} 件)")
+        # st.info(f"デバッグ: 登録済みルーム情報取得開始 ({len(room_ids)} 件)")
 
         def fetch_profile(rid):
             """個別ルーム情報を取得"""
@@ -1677,7 +1677,7 @@ if is_admin:
                 profiles.append(future.result())
 
         elapsed = time.time() - start_time
-        st.info(f"デバッグ: 登録済みルーム情報取得完了 ({len(profiles)} 件, {elapsed:.2f} 秒)")
+        # st.info(f"デバッグ: 登録済みルーム情報取得完了 ({len(profiles)} 件, {elapsed:.2f} 秒)")
 
         df_prof = pd.DataFrame(profiles)
 
