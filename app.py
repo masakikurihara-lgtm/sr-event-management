@@ -541,6 +541,18 @@ if is_admin:
     st.info(f"デバッグ: 開始日時選択肢生成完了 ({time.time() - t5:.2f} 秒)")
     
 
+    # 管理者モードの表示
+    st.markdown(make_html_table_admin(df_show), unsafe_allow_html=True)
+    
+    end_today_color = END_TODAY_HIGHLIGHT.replace('background-color: ', '').replace(';', '')
+    #st.caption(f"2023年9月以降に開始された参加イベントを表示しています。黄色行は開催中（終了日時が未来）のイベントです。赤っぽい行（{end_today_color}）は終了日時が本日のイベントです。")
+    st.caption(f"")
+    
+    # CSVダウンロード
+    cols_to_drop = [c for c in ["is_ongoing", "is_end_today", "__point_num", "URL", "ルームID", "__display_liver_name"] if c in df_show.columns]
+    csv_bytes = df_show.drop(columns=cols_to_drop).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+    st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_history_admin.csv", key="admin_csv_download")
+
     
     # ... (以降のUI描画ブロック) ...
 
@@ -1521,17 +1533,7 @@ def make_html_table_admin(df):
 # ★★★ 表示（管理者/ライバーで分岐） ★★★
 # ----------------------------------------------------------------------
 if is_admin:
-    # 管理者モードの表示
-    st.markdown(make_html_table_admin(df_show), unsafe_allow_html=True)
-    
-    end_today_color = END_TODAY_HIGHLIGHT.replace('background-color: ', '').replace(';', '')
-    #st.caption(f"2023年9月以降に開始された参加イベントを表示しています。黄色行は開催中（終了日時が未来）のイベントです。赤っぽい行（{end_today_color}）は終了日時が本日のイベントです。")
-    st.caption(f"")
-    
-    # CSVダウンロード
-    cols_to_drop = [c for c in ["is_ongoing", "is_end_today", "__point_num", "URL", "ルームID", "__display_liver_name"] if c in df_show.columns]
-    csv_bytes = df_show.drop(columns=cols_to_drop).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-    st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_history_admin.csv", key="admin_csv_download")
+
     
 
 
