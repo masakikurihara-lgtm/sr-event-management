@@ -1136,7 +1136,7 @@ if is_admin:
 
         elapsed_liver = time.time() - t_liver_start
         # st.info(f"デバッグ: ライバー名キャッシュ更新完了 ({len(st.session_state.room_name_cache)} 件, {elapsed_liver:.2f} 秒)")
-    else:
+    # else:
         # st.info("デバッグ: ライバー名キャッシュ更新はスキップ（全件キャッシュ済み）")
 
 
