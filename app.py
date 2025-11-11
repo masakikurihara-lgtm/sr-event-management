@@ -436,68 +436,48 @@ if is_admin:
     st.info(f"デバッグ: 管理者モード初期処理完了 ({len(df)} 件, {elapsed:.2f} 秒)")
 
     
-    # 2. 開催中判定
+    # --- デバッグステップ2: 各処理時間をログ出力 ---
+
+    t1 = time.time()
     now_ts = int(datetime.now(JST).timestamp())
     today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-    # 修正前: df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
-    df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts - 3600) # ★★★ 修正後 ★★★
-
-    # 終了日時が当日（今日0時〜明日0時の間）の判定
+    df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts - 3600)
     df["is_end_today"] = df["__end_ts"].apply(lambda x: pd.notna(x) and today_ts <= x < (today_ts + 86400))
+    st.info(f"デバッグ: 開催中判定完了 ({time.time() - t1:.2f} 秒)")
 
-    # ★★★ 修正 (5. 開催中イベント最新化) - 自動最新化/ボタン最新化をここで実行 ★★★
-    if is_admin or st.session_state.get('refresh_trigger', False):
-        ongoing = df[df["is_ongoing"]] # df (フィルタ前の全データ) を使用
-        
-        # with st.spinner("開催中イベントの順位/ポイントを最新化中..."): # ← 削除 (ユーザー要望)
-        for idx, row in ongoing.iterrows():
-            event_id = row.get("event_id")
-            room_id_to_update = row.get("ルームID")
-            stats = get_event_stats_from_roomlist(event_id, room_id_to_update)
-            if stats:
-                st.session_state.df_all.at[idx, "順位"] = stats.get("rank") or "-"
-                st.session_state.df_all.at[idx, "ポイント"] = stats.get("point") or 0
-                st.session_state.df_all.at[idx, "レベル"] = stats.get("quest_level") or 0
-            time.sleep(0.1) # API負荷軽減
-        
-        st.session_state.refresh_trigger = False
-        # st.toast("終了前イベントの最新化が完了しました。", icon="✅") # ← 削除 (ユーザー要望)
-        
-        # ★★★ 修正: st.session_state.df_all の更新を反映するため、df を再作成 ★★★
-        df_all = st.session_state.df_all.copy()
-        df = df_all.copy()
-        
-        # 再度フラグ/TSを付ける (必須)
-        df["開始日時"] = df["開始日時"].apply(fmt_time)
-        df["終了日時"] = df["終了日時"].apply(fmt_time)
-        df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
-        df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
-        now_ts = int(datetime.now(JST).timestamp())
-        today_ts = datetime.now(JST).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
-        # 修正前: df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts)
-        df["is_ongoing"] = df["__end_ts"].apply(lambda x: pd.notna(x) and x > now_ts - 3600) # ★★★ 修正後 ★★★
+    # ★ 開催中イベント最新化のタイミングを計測 ★
+    t2 = time.time()
+    ongoing = df[df["is_ongoing"]]
+    st.info(f"デバッグ: 開催中イベント数 = {len(ongoing)}")
 
-        df["is_end_today"] = df["__end_ts"].apply(lambda x: pd.notna(x) and today_ts <= x < (today_ts + 86400))
-    # ★★★ 修正ブロック終了 ★★★
+    for idx, row in ongoing.iterrows():
+        event_id = row.get("event_id")
+        room_id_to_update = row.get("ルームID")
+        stats = get_event_stats_from_roomlist(event_id, room_id_to_update)
+        if stats:
+            st.session_state.df_all.at[idx, "順位"] = stats.get("rank") or "-"
+            st.session_state.df_all.at[idx, "ポイント"] = stats.get("point") or 0
+            st.session_state.df_all.at[idx, "レベル"] = stats.get("quest_level") or 0
+        time.sleep(0.1)  # API負荷軽減
 
+    st.info(f"デバッグ: 開催中イベント最新化完了 ({time.time() - t2:.2f} 秒)")
 
-    # 4. フィルタリングの適用（デフォルトフィルタリングまで）
+    # --- 以下フィルタリング・UI生成部 ---
+    t3 = time.time()
     df_filtered = df.copy()
-
-    # 2023年9月1日以降に開始のイベントに限定（ライバーモードと同じ基準）
     df_filtered = df_filtered[
-        # __start_ts が有効な値で、かつ FILTER_START_TS 以上であること
         (df_filtered["__start_ts"].apply(lambda x: pd.notna(x) and x >= FILTER_START_TS))
-        | (df_filtered["__start_ts"].isna()) # タイムスタンプに変換できない行も一応含める
+        | (df_filtered["__start_ts"].isna())
     ].copy()
 
-    # デフォルトフィルタリング（全量表示がOFFの場合）
     if not st.session_state.admin_full_data:
-        # 終了日時が10日前以降のイベントに絞り込み
         df_filtered = df_filtered[
             (df_filtered["__end_ts"].apply(lambda x: pd.notna(x) and x >= FILTER_END_DATE_TS_DEFAULT))
-            | (df_filtered["__end_ts"].isna()) # タイムスタンプに変換できない行も一応含める
+            | (df_filtered["__end_ts"].isna())
         ].copy()
+
+    st.info(f"デバッグ: 絞り込み後 = {len(df_filtered)} 件 ({time.time() - t3:.2f} 秒)")
+
 
     # 終了日時フィルタリング用の選択肢生成
     unique_end_dates = sorted(
