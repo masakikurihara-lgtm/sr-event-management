@@ -407,8 +407,8 @@ if is_admin:
 
 
     # 2. 日時整形とタイムスタンプ追加（約100件に対して実行される）
-    df["開始日時"] = df["開始日時"].apply(fmt_time) 
-    df["終了日時"] = df["終了日時"].apply(fmt_time) 
+    #df["開始日時"] = df["開始日時"].apply(fmt_time) 
+    #df["終了日時"] = df["終了日時"].apply(fmt_time) 
     
     # TS列はキャッシュからコピー
     original_indices = df['__original_index']
@@ -462,7 +462,7 @@ if is_admin:
 
 
     # 4. フィルタリングの適用（最終フィルタリングまで）
-    #df_filtered = df.copy() 
+    df_filtered = df.copy() 
 
     # 2023年9月1日以降に開始のイベントに限定（ライバーモードと同じ基準）
     df_filtered = df_filtered[
