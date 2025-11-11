@@ -1109,13 +1109,22 @@ if is_admin:
     room_ids_to_fetch = [rid for rid in unique_room_ids if str(rid) not in st.session_state.room_name_cache]
 
     if room_ids_to_fetch:
-        # ライバーモードの挙動に合わせ、spinnerを削除
+        import time
+        st.info(f"デバッグ: ライバー名キャッシュ更新開始 ({len(room_ids_to_fetch)} 件)")
+        t_liver_start = time.time()
+
         for room_id_val in room_ids_to_fetch:
             room_id_str = str(room_id_val)
             name = get_room_name(room_id_str)
             if name:
                 st.session_state.room_name_cache[room_id_str] = name
-            time.sleep(0.05) # API負荷軽減
+            time.sleep(0.05)  # API負荷軽減
+
+        elapsed_liver = time.time() - t_liver_start
+        st.info(f"デバッグ: ライバー名キャッシュ更新完了 ({len(st.session_state.room_name_cache)} 件, {elapsed_liver:.2f} 秒)")
+    else:
+        st.info("デバッグ: ライバー名キャッシュ更新はスキップ（全件キャッシュ済み）")
+
 
     df_filtered["__display_liver_name"] = df_filtered.apply(
         lambda row: st.session_state.room_name_cache.get(str(row["ルームID"])) or row["ライバー名"], 
