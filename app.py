@@ -147,37 +147,39 @@ def get_room_name(room_id):
 def get_event_stats_from_roomlist(event_id, room_id):
     """
     指定イベント内の特定ルームの順位・ポイント・レベルを取得する。
-    全ページをスキャンして該当ルームを検索する。
+    全ページをスキャンして該当ルームを検索する（並列高速化版）。
     """
-    page = 1
+    import concurrent.futures
+
     found_entry = None
+    max_pages = 20  # 想定される最大ページ数（必要に応じて調整）
+    page_results = {}
 
-    while True:
-        data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": page})
+    def fetch_page(p):
+        """1ページ分のデータ取得"""
+        data = http_get_json(API_ROOM_LIST, params={"event_id": event_id, "p": p})
         if not data or "list" not in data:
-            break
+            return (p, None)
+        return (p, data)
 
-        entries = data.get("list", [])
-        if not entries:
-            break
-
-        # 対象ルームを検索
-        for entry in entries:
-            rid = str(entry.get("room_id"))
-            if rid == str(room_id):
-                found_entry = entry
+    # --- 並列で複数ページを同時取得 ---
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(fetch_page, p): p for p in range(1, max_pages + 1)}
+        for future in concurrent.futures.as_completed(futures):
+            p, data = future.result()
+            if not data:
+                continue
+            entries = data.get("list", [])
+            for entry in entries:
+                rid = str(entry.get("room_id"))
+                if rid == str(room_id):
+                    found_entry = entry
+                    break
+            if found_entry:
                 break
-
-        # 見つかったら即終了
-        if found_entry:
-            break
-
-        # 次ページ判定
-        if not data.get("next_page") and len(entries) < 50:
-            break
-
-        page += 1
-        time.sleep(0.05)  # API負荷軽減
+            # ページの終端を検知して打ち切り
+            if not data.get("next_page") and len(entries) < 50:
+                break
 
     if not found_entry:
         return None
