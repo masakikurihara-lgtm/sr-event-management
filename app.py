@@ -445,22 +445,35 @@ if is_admin:
     df["is_end_today"] = df["__end_ts"].apply(lambda x: pd.notna(x) and today_ts <= x < (today_ts + 86400))
     st.info(f"デバッグ: 開催中判定完了 ({time.time() - t1:.2f} 秒)")
 
-    # ★ 開催中イベント最新化のタイミングを計測 ★
-    t2 = time.time()
+    # ★★★ 修正 (5. 開催中イベント最新化 高速化版) ★★★
+    start_time = time.time()
     ongoing = df[df["is_ongoing"]]
     st.info(f"デバッグ: 開催中イベント数 = {len(ongoing)}")
 
-    for idx, row in ongoing.iterrows():
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def update_event_stats(row):
         event_id = row.get("event_id")
         room_id_to_update = row.get("ルームID")
         stats = get_event_stats_from_roomlist(event_id, room_id_to_update)
         if stats:
-            st.session_state.df_all.at[idx, "順位"] = stats.get("rank") or "-"
-            st.session_state.df_all.at[idx, "ポイント"] = stats.get("point") or 0
-            st.session_state.df_all.at[idx, "レベル"] = stats.get("quest_level") or 0
-        time.sleep(0.1)  # API負荷軽減
+            return (row.name, stats)
+        return None
 
-    st.info(f"デバッグ: 開催中イベント最新化完了 ({time.time() - t2:.2f} 秒)")
+    results = []
+    with ThreadPoolExecutor(max_workers=8) as executor:  # 並列8スレッド
+        futures = [executor.submit(update_event_stats, row) for _, row in ongoing.iterrows()]
+        for future in as_completed(futures):
+            res = future.result()
+            if res:
+                idx, stats = res
+                st.session_state.df_all.at[idx, "順位"] = stats.get("rank") or "-"
+                st.session_state.df_all.at[idx, "ポイント"] = stats.get("point") or 0
+                st.session_state.df_all.at[idx, "レベル"] = stats.get("quest_level") or 0
+
+    elapsed = time.time() - start_time
+    st.info(f"デバッグ: 開催中イベント最新化完了 ({elapsed:.2f} 秒)")
+
 
     # --- 以下フィルタリング・UI生成部 ---
     t3 = time.time()
