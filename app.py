@@ -405,9 +405,9 @@ if is_admin and not st.session_state.admin_full_data:
 
 if is_admin:
     # --- 管理者モードのデータ処理 ---
-    # st.info(f"**管理者モード**") # ← 削除 (ユーザー要望)
+    import time
+    t0 = time.time()  # ← 計測開始
 
-    # 1. 日付整形とタイムスタンプ追加 (全量)
     df = df_all.copy()
 
     # ✅ 終了日時のパースを一度だけ行い、10日前以前のデータはスキップ
@@ -422,11 +422,19 @@ if is_admin:
             break
     df = pd.DataFrame(rows_recent)
 
-    # ✅ 残った70件程度にのみ fmt_time / parse_to_ts を実行（ここが超重要）
+    # ✅ 残ったデータ件数を出力（ここで70件前後になっていればOK）
+    st.info(f"デバッグ: フィルタ後の件数 = {len(df)} 件")
+
+    # ✅ 残った70件程度にのみ fmt_time / parse_to_ts を実行
     df["開始日時"] = df["開始日時"].apply(fmt_time)
     df["終了日時"] = df["終了日時"].apply(fmt_time)
     df["__start_ts"] = df["開始日時"].apply(parse_to_ts)
     df["__end_ts"] = df["終了日時"].apply(parse_to_ts)
+
+    # ✅ 処理時間の計測結果を表示
+    elapsed = time.time() - t0
+    st.info(f"デバッグ: 管理者モード初期処理完了 ({len(df)} 件, {elapsed:.2f} 秒)")
+
     
     # 2. 開催中判定
     now_ts = int(datetime.now(JST).timestamp())
