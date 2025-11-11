@@ -494,16 +494,54 @@ if is_admin:
     st.info(f"デバッグ: 絞り込み後 = {len(df_filtered)} 件 ({time.time() - t3:.2f} 秒)")
 
     # 終了日時フィルタリング用の選択肢生成
-    unique_end_dates = sorted(
-        list(set(df_filtered["終了日時"].apply(lambda x: x.split(' ')[0] if x else '')) - {''}), 
-        reverse=True
-    )
+    #unique_end_dates = sorted(
+    #    list(set(df_filtered["終了日時"].apply(lambda x: x.split(' ')[0] if x else '')) - {''}), 
+    #    reverse=True
+    #)
     
     # 開始日時フィルタリング用の選択肢生成
-    unique_start_dates = sorted(
-        list(set(df_filtered["開始日時"].apply(lambda x: x.split(' ')[0] if x else '')) - {''}), 
+    #unique_start_dates = sorted(
+    #    list(set(df_filtered["開始日時"].apply(lambda x: x.split(' ')[0] if x else '')) - {''}), 
+    #    reverse=True
+    #)
+
+    # ---------------------------------------------
+    # 終了日時フィルタリング用の選択肢生成
+    # ★★★ 最終修正: applyとsetを避け、Pandasのstrメソッドを使用して高速化する ★★★
+    # ---------------------------------------------
+    t4 = time.time() # デバッグ開始
+    
+    df_dates = df_filtered["終了日時"].astype(str)
+    # 日時文字列（例: '2025-10-10 10:00:00'）から日付部分 '2025-10-10' を抽出
+    unique_end_dates = sorted(
+        list(df_dates.str.split(' ', n=1, expand=True)[0].unique()), # n=1で高速化
         reverse=True
     )
+    # 空文字列をセットから除外
+    unique_end_dates = [d for d in unique_end_dates if d != '']
+    
+    st.info(f"デバッグ: 終了日時選択肢生成完了 ({time.time() - t4:.2f} 秒)")
+
+
+    # ---------------------------------------------
+    # 開始日時フィルタリング用の選択肢生成
+    # ★★★ 最終修正: 同様にPandasのstrメソッドを使用して高速化する ★★★
+    # ---------------------------------------------
+    t5 = time.time() # デバッグ開始
+
+    df_dates = df_filtered["開始日時"].astype(str)
+    # 日時文字列（例: '2025-10-10 10:00:00'）から日付部分 '2025-10-10' を抽出
+    unique_start_dates = sorted(
+        list(df_dates.str.split(' ', n=1, expand=True)[0].unique()), # n=1で高速化
+        reverse=True
+    )
+    # 空文字列をセットから除外
+    unique_start_dates = [d for d in unique_start_dates if d != '']
+    
+    st.info(f"デバッグ: 開始日時選択肢生成完了 ({time.time() - t5:.2f} 秒)")
+
+    
+    # ... (以降のUI描画ブロック) ...
 
 
     # ✅ UI描画ブロックをspinnerで囲む
