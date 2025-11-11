@@ -407,8 +407,8 @@ if is_admin:
 
 
     # 2. 日時整形とタイムスタンプ追加（約100件に対して実行される）
-    #df["開始日時"] = df["開始日時"].apply(fmt_time) 
-    #df["終了日時"] = df["終了日時"].apply(fmt_time) 
+    df["開始日時"] = df["開始日時"].apply(fmt_time) 
+    df["終了日時"] = df["終了日時"].apply(fmt_time) 
     
     # TS列はキャッシュからコピー
     original_indices = df['__original_index']
