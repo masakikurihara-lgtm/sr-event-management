@@ -173,7 +173,7 @@ def get_event_stats_from_roomlist(event_id, room_id):
             break
 
         # 次ページ判定
-        if not data.get("next_page") and len(entries) < 50:
+        if found_entry or len(entries) < 50 or not data.get("next_page"):
             break
 
         page += 1
