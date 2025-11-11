@@ -1611,7 +1611,7 @@ if is_admin:
                     success = upload_add_room_csv(df_add)
                     if success:
                         st.success(f"✅ ルームID {new_room_id} を登録しました。")
-                        time.sleep(1)
+                        time.sleep(0.1)
                         st.rerun()
                 else:
                     st.warning("⚠️ 既に登録済みのルームIDです。")
@@ -1622,32 +1622,48 @@ if is_admin:
     st.markdown("#### 📋 登録済みユーザー一覧")
 
     # --- 登録済みリスト表示 ---
+    # --- 登録済みリスト表示 ---
     if df_add.empty:
         st.info("現在、登録済みのルームIDはありません。")
     else:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         profiles = []
-        for rid in df_add["ルームID"].dropna().astype(str).tolist():
+        room_ids = df_add["ルームID"].dropna().astype(str).tolist()
+
+        st.info(f"デバッグ: 登録済みルーム情報取得開始 ({len(room_ids)} 件)")
+
+        def fetch_profile(rid):
+            """個別ルーム情報を取得"""
             prof = http_get_json(API_ROOM_PROFILE, params={"room_id": rid})
             if prof:
-                profiles.append({
+                return {
                     "ルーム名": prof.get("room_name", ""),
                     "SHOWランク": prof.get("show_rank_subdivided", "-"),
                     "フォロワー数": prof.get("follower_num", "-"),
                     "まいにち配信": prof.get("live_continuous_days", "-"),
                     "ルームID": rid
-                })
+                }
             else:
-                profiles.append({
+                return {
                     "ルーム名": "(取得失敗)",
                     "SHOWランク": "-",
                     "フォロワー数": "-",
                     "まいにち配信": "-",
                     "ルームID": rid
-                })
-            time.sleep(0.1)
+                }
 
-        # DataFrame化
+        start_time = time.time()
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = {executor.submit(fetch_profile, rid): rid for rid in room_ids}
+            for future in as_completed(futures):
+                profiles.append(future.result())
+
+        elapsed = time.time() - start_time
+        st.info(f"デバッグ: 登録済みルーム情報取得完了 ({len(profiles)} 件, {elapsed:.2f} 秒)")
+
         df_prof = pd.DataFrame(profiles)
+
 
         # --- HTMLテーブルの生成（イベント一覧に合わせた見た目） ---
         html = """
