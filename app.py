@@ -657,7 +657,7 @@ if is_admin:
 
             start_id = st.number_input("スキャン開始イベントID", min_value=1, value=40500, step=1)
             end_id = st.number_input("スキャン終了イベントID", min_value=start_id, value=start_id + 500, step=1)
-            max_workers = st.number_input("並列処理数", min_value=1, max_value=30, value=5)
+            max_workers = st.number_input("並列処理数", min_value=1, max_value=30, value=4)
             save_interval = st.number_input("途中保存間隔（件）", min_value=50, value=300, step=50)
 
 
