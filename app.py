@@ -539,6 +539,8 @@ if is_admin:
     unique_start_dates = [d for d in unique_start_dates if d != '']
     
     st.info(f"デバッグ: 開始日時選択肢生成完了 ({time.time() - t5:.2f} 秒)")
+    
+    st.markdown(make_html_table_admin(df_show), unsafe_allow_html=True)
 
     
     # ... (以降のUI描画ブロック) ...
