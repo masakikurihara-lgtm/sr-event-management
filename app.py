@@ -1513,33 +1513,52 @@ def make_html_table_admin(df):
     """
 
 
+import html
+import re
+
+    def safe_text(s):
+        """文字化けや制御文字を除去して安全な文字列に変換"""
+        if s is None:
+            return ""
+        s = str(s)
+        # 制御文字・U+FFFD(�)・NULL等を除去
+        s = re.sub(r"[\x00-\x1F\x7F\uFFFD]", "", s)
+        # HTMLエスケープ
+        return html.escape(s)
+
     for _, r in df.iterrows():
         try:
+            # ハイライトクラス決定
             cls = "end_today" if r.get("is_end_today") else ("ongoing" if r.get("is_ongoing") else "")
 
             url = r.get("URL") or ""
             room_id = r.get("ルームID") or ""
 
-            name = html.escape(str(r.get("イベント名") or ""))
-            liver_name = html.escape(str(r.get("__display_liver_name") or r.get("ライバー名") or ""))
+            # 🔹 すべてのセル内容を安全化
+            name = safe_text(r.get("イベント名"))
+            liver_name = safe_text(r.get("__display_liver_name") or r.get("ライバー名"))
+            start_time = safe_text(r.get("開始日時"))
+            end_time = safe_text(r.get("終了日時"))
+            rank = safe_text(r.get("順位"))
+            level = safe_text(r.get("レベル"))
+            event_id = safe_text(r.get("event_id"))
+            room_id_disp = safe_text(room_id)
 
-            if "�" in name or "�" in liver_name:
-                st.warning(f"⚠️ 壊れた文字を検出: イベント名={name}, ライバー名={liver_name}")
-
+            # 🔹 ポイント整形（数値以外は安全化）
             point_raw = r.get("ポイント")
-            point = (
-                f"{float(point_raw):,.0f}"
-                if pd.notna(point_raw) and str(point_raw) not in ("-", "")
-                else str(point_raw or "")
-            )
+            if pd.notna(point_raw) and str(point_raw) not in ("-", ""):
+                point = f"{float(point_raw):,.0f}"
+            else:
+                point = safe_text(point_raw)
 
+            # 🔹 HTMLリンク生成
             event_link = f'<a class="evlink" href="{html.escape(url)}" target="_blank">{name}</a>' if url else name
-            liver_link_url = f"https://www.showroom-live.com/room/profile?room_id={room_id}"
-            liver_link = f'<a class="liver-link" href="{liver_link_url}" target="_blank">{liver_name}</a>' if room_id else liver_name
+            liver_link_url = f"https://www.showroom-live.com/room/profile?room_id={room_id_disp}"
+            liver_link = f'<a class="liver-link" href="{liver_link_url}" target="_blank">{liver_name}</a>' if room_id_disp else liver_name
 
             html_output += f'<tr class="{cls}">'
-            html_output += f"<td>{liver_link}</td><td>{event_link}</td><td>{r['開始日時']}</td><td>{r['終了日時']}</td>"
-            html_output += f"<td>{r['順位']}</td><td>{point}</td><td>{r['レベル']}</td><td>{r.get('event_id', '')}</td><td>{r.get('ルームID', '')}</td>"
+            html_output += f"<td>{liver_link}</td><td>{event_link}</td><td>{start_time}</td><td>{end_time}</td>"
+            html_output += f"<td>{rank}</td><td>{point}</td><td>{level}</td><td>{event_id}</td><td>{room_id_disp}</td>"
             html_output += "</tr>"
 
         except Exception as e:
