@@ -1450,24 +1450,24 @@ def make_html_table_user(df, room_id):
     return html
 
 # ----------------------------------------------------------------------
-# HTMLテーブル生成関数 (管理者モード用 - 修正なし)
+# HTMLテーブル生成関数 (管理者モード用 - 安全化＆壊れ文字除去版)
 # ----------------------------------------------------------------------
 import html
+import re
 
 def make_html_table_admin(df):
     """管理者用HTMLテーブルを生成（ライバー名列あり、ポイントハイライトなし、終了当日ハイライトあり）"""
-    
+
     # END_TODAY_HIGHLIGHTからカラーコードを抽出し、CSSの二重定義を回避
     end_today_color_code = END_TODAY_HIGHLIGHT.replace('background-color: ', '').replace(';', '')
-    
-    # URL/貢献ランク列を削除した7列構成
+
+    # HTMLヘッダ（CSS）
     html_output = f"""
     <style>
-    .scroll-table {{ max-height: 520px; overflow-y: auto; overflow-x: auto;　border: 1px solid #ddd; border-radius: 6px; text-align: center; width: 100%; -webkit-overflow-scrolling: touch;}}
+    .scroll-table {{ max-height: 520px; overflow-y: auto; overflow-x: auto; border: 1px solid #ddd; border-radius: 6px; text-align: center; width: 100%; -webkit-overflow-scrolling: touch; }}
     table {{ width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }}
     thead th {{ position: sticky; top: 0; background: #0b66c2; color: #fff; padding: 5px; text-align: center; border: 1px solid #0b66c2; z-index: 10; }}
     tbody td {{ padding: 5px; border-bottom: 1px solid #f2f2f2; text-align: center; vertical-align: middle; word-wrap: break-word; }}
-    /* 管理者用: カラム幅の指定（URL列削除に合わせて調整） */
     table col:nth-child(1) {{ width: 22%; }} /* ライバー名 */
     table col:nth-child(2) {{ width: 22%; }} /* イベント名 */
     table col:nth-child(3) {{ width: 11%; }} /* 開始日時 */
@@ -1477,17 +1477,13 @@ def make_html_table_admin(df):
     table col:nth-child(7) {{ width: 5%; }}  /* レベル */
     table col:nth-child(8) {{ width: 8%; }}  /* イベントID */
     table col:nth-child(9) {{ width: 8%; }}  /* ルームID */
-    
-    /* 修正: background-colorプロパティを正しく適用 */
     tr.end_today{{background-color:{end_today_color_code};}} /* 終了日時当日ハイライト */
     tr.ongoing{{background:#fff8b3;}} /* 開催中黄色ハイライト */
     a.evlink{{color:#0b57d0;text-decoration:underline;}}
     .rank-btn-link {{ background:#0b57d0; color:white !important; border:none; padding:4px 6px; border-radius:4px; cursor:pointer; text-decoration:none; display: inline-block; font-size: 12px; }}
     .liver-link {{ color:#0b57d0; text-decoration:underline; }}
-
-    /* ライバー名 (1列目) とイベント名 (2列目) の省略表示設定 */
     table tbody td:nth-child(1),
-    table tbody td:nth-child(2) {{ 
+    table tbody td:nth-child(2) {{
         text-align: left;
         white-space: nowrap;
         overflow: hidden;
@@ -1502,7 +1498,6 @@ def make_html_table_admin(df):
         overflow: hidden;
         text-overflow: ellipsis;
     }}
-    
     </style>
     <div class="scroll-table"><table>
     <colgroup><col><col><col><col><col><col><col><col><col></colgroup>
@@ -1512,29 +1507,23 @@ def make_html_table_admin(df):
     </tr></thead><tbody>
     """
 
-
-import html
-import re
-
+    # 内部ユーティリティ：文字列を安全化（制御文字・壊れ文字を削除して HTML エスケープ）
     def safe_text(s):
-        """文字化けや制御文字を除去して安全な文字列に変換"""
         if s is None:
             return ""
         s = str(s)
-        # 制御文字・U+FFFD(�)・NULL等を除去
+        # 制御文字と U+FFFD を除去（これがタグ破壊の主因）
         s = re.sub(r"[\x00-\x1F\x7F\uFFFD]", "", s)
-        # HTMLエスケープ
         return html.escape(s)
 
+    # 行ごとにHTMLを構築
     for _, r in df.iterrows():
         try:
-            # ハイライトクラス決定
             cls = "end_today" if r.get("is_end_today") else ("ongoing" if r.get("is_ongoing") else "")
 
             url = r.get("URL") or ""
-            room_id = r.get("ルームID") or ""
+            room_id_raw = r.get("ルームID") or ""
 
-            # 🔹 すべてのセル内容を安全化
             name = safe_text(r.get("イベント名"))
             liver_name = safe_text(r.get("__display_liver_name") or r.get("ライバー名"))
             start_time = safe_text(r.get("開始日時"))
@@ -1542,16 +1531,18 @@ import re
             rank = safe_text(r.get("順位"))
             level = safe_text(r.get("レベル"))
             event_id = safe_text(r.get("event_id"))
-            room_id_disp = safe_text(room_id)
+            room_id_disp = safe_text(room_id_raw)
 
-            # 🔹 ポイント整形（数値以外は安全化）
+            # ポイントは数値ならフォーマット、それ以外は安全化して出力
             point_raw = r.get("ポイント")
             if pd.notna(point_raw) and str(point_raw) not in ("-", ""):
-                point = f"{float(point_raw):,.0f}"
+                try:
+                    point = f"{float(point_raw):,.0f}"
+                except Exception:
+                    point = safe_text(point_raw)
             else:
                 point = safe_text(point_raw)
 
-            # 🔹 HTMLリンク生成
             event_link = f'<a class="evlink" href="{html.escape(url)}" target="_blank">{name}</a>' if url else name
             liver_link_url = f"https://www.showroom-live.com/room/profile?room_id={room_id_disp}"
             liver_link = f'<a class="liver-link" href="{liver_link_url}" target="_blank">{liver_name}</a>' if room_id_disp else liver_name
@@ -1562,8 +1553,11 @@ import re
             html_output += "</tr>"
 
         except Exception as e:
+            # HTML生成エラーを出力して処理継続（個別行の破壊を避ける）
             st.error(f"HTML生成エラー: {e}")
 
+    # 最終的に念のため壊れ文字が混入していれば除去して返す
+    html_output = html_output.replace("\uFFFD", "")
     html_output += "</tbody></table></div>"
     return html_output
 
