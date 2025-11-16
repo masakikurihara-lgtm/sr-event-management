@@ -1674,6 +1674,8 @@ if is_admin:
                         st.success(f"✅ ルームID {new_room_id} を登録しました。")
                         time.sleep(0.1)
                         st.rerun()
+                    else:
+                        st.warning("⚠️ FTPアップロードに失敗しましたが、ローカルデータは更新されました。")
                 else:
                     st.warning("⚠️ 既に登録済みのルームIDです。")
             else:
@@ -1682,8 +1684,6 @@ if is_admin:
     # --- 登録済みリスト表示 ---
     st.markdown("#### 📋 登録済みユーザー一覧")
 
-    # --- 登録済みリスト表示 ---
-    # --- 登録済みリスト表示 ---
     if df_add.empty:
         st.info("現在、登録済みのルームIDはありません。")
     else:
@@ -1697,13 +1697,20 @@ if is_admin:
         def fetch_profile(rid):
             """個別ルーム情報を取得"""
             prof = http_get_json(API_ROOM_PROFILE, params={"room_id": rid})
-            result = {"ルームID": rid}
+            
+            # 「公/フ」のステータスを決定
+            if prof and prof.get("is_official") is not None:
+                official_status = "公" if prof["is_official"] else "フ"
+            else:
+                official_status = "-"
+
             if prof:
                 return {
                     "ルーム名": prof.get("room_name", ""),
                     "SHOWランク": prof.get("show_rank_subdivided", "-"),
                     "フォロワー数": prof.get("follower_num", "-"),
                     "まいにち配信": prof.get("live_continuous_days", "-"),
+                    "公/フ": official_status, # ★追加
                     "ルームID": rid
                 }
             else:
@@ -1712,9 +1719,9 @@ if is_admin:
                     "SHOWランク": "-",
                     "フォロワー数": "-",
                     "まいにち配信": "-",
+                    "公/フ": official_status, # ★追加 (取得失敗時も設定)
                     "ルームID": rid
                 }
-            return result
 
         start_time = time.time()
         with ThreadPoolExecutor(max_workers=8) as executor:
@@ -1725,24 +1732,15 @@ if is_admin:
         elapsed = time.time() - start_time
         # st.info(f"デバッグ: 登録済みルーム情報取得完了 ({len(profiles)} 件, {elapsed:.2f} 秒)")
 
-        # --------------------------------------------------------
-        # ↓↓↓ 修正箇所：元のdf_addの順序で並べ替える処理を追加 ↓↓↓
-        # --------------------------------------------------------
         df_prof_raw = pd.DataFrame(profiles)
         
-        # 1. df_add（元の順序）とdf_prof_raw（APIの結果）をルームIDをキーとして結合
-        #    df_addの順序（left_on=）を維持するためにマージを使用
-        #    pd.mergeのデフォルトはインデックスをリセットするので、元のdf_addの順序が維持されます。
+        # 順序固定のためのマージ処理
         df_prof = pd.merge(
             df_add.reset_index(), # 元の順序を index 列として保存
             df_prof_raw,
             on="ルームID",
             how="left"
         ).sort_values(by='index').drop(columns=['index']).reset_index(drop=True)
-        # --------------------------------------------------------
-        # ↑↑↑ 修正箇所はここまで ↑↑↑
-        # --------------------------------------------------------
-
 
         # --- HTMLテーブルの生成（イベント一覧に合わせた見た目） ---
         html = """
@@ -1756,20 +1754,26 @@ if is_admin:
         </style>
         <div class="add-table-wrapper"><table class="add-table">
         <thead><tr>
-          <th>ルーム名</th><th>SHOWランク</th><th>フォロワー数</th><th>まいにち配信</th><th>ルームID</th>
+          <th>ルーム名</th><th>SHOWランク</th><th>フォロワー数</th><th>まいにち配信</th><th>公/フ</th><th>ルームID</th>
         </tr></thead><tbody>
         """
+        #                                                  ^^^^^^^ ★追加
 
         for _, row in df_prof.iterrows():
             room_name = row.get("ルーム名") or ""
             show_rank = row.get("SHOWランク") or "-"
+            official_status_disp = row.get("公/フ") or "-" # ★取得
             follower = row.get("フォロワー数")
+            
             try:
+                # フォロワー数整形
                 follower_fmt = f"{int(follower):,}" if str(follower) not in ("-", "") and pd.notna(follower) else (str(follower) if follower is not None else "-")
             except Exception:
                 follower_fmt = str(follower or "-")
+                
             live_days = row.get("まいにち配信") or "-"
             rid = row.get("ルームID") or ""
+            
             # ルーム名にプロフィールページへのリンクを付与
             if rid:
                 room_link = f'<a class="link" href="https://www.showroom-live.com/room/profile?room_id={rid}" target="_blank">{room_name}</a>'
@@ -1781,6 +1785,7 @@ if is_admin:
             html += f"<td>{show_rank}</td>"
             html += f"<td>{follower_fmt}</td>"
             html += f"<td>{live_days} 日</td>"
+            html += f"<td>{official_status_disp}</td>" # ★追加
             html += f"<td>{rid}</td>"
             html += "</tr>"
 
