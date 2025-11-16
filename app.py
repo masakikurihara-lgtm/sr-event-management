@@ -1697,6 +1697,7 @@ if is_admin:
         def fetch_profile(rid):
             """個別ルーム情報を取得"""
             prof = http_get_json(API_ROOM_PROFILE, params={"room_id": rid})
+            result = {"ルームID": rid}
             if prof:
                 return {
                     "ルーム名": prof.get("room_name", ""),
@@ -1713,6 +1714,7 @@ if is_admin:
                     "まいにち配信": "-",
                     "ルームID": rid
                 }
+            return result
 
         start_time = time.time()
         with ThreadPoolExecutor(max_workers=8) as executor:
@@ -1723,7 +1725,23 @@ if is_admin:
         elapsed = time.time() - start_time
         # st.info(f"デバッグ: 登録済みルーム情報取得完了 ({len(profiles)} 件, {elapsed:.2f} 秒)")
 
-        df_prof = pd.DataFrame(profiles)
+        # --------------------------------------------------------
+        # ↓↓↓ 修正箇所：元のdf_addの順序で並べ替える処理を追加 ↓↓↓
+        # --------------------------------------------------------
+        df_prof_raw = pd.DataFrame(profiles)
+        
+        # 1. df_add（元の順序）とdf_prof_raw（APIの結果）をルームIDをキーとして結合
+        #    df_addの順序（left_on=）を維持するためにマージを使用
+        #    pd.mergeのデフォルトはインデックスをリセットするので、元のdf_addの順序が維持されます。
+        df_prof = pd.merge(
+            df_add.reset_index(), # 元の順序を index 列として保存
+            df_prof_raw,
+            on="ルームID",
+            how="left"
+        ).sort_values(by='index').drop(columns=['index']).reset_index(drop=True)
+        # --------------------------------------------------------
+        # ↑↑↑ 修正箇所はここまで ↑↑↑
+        # --------------------------------------------------------
 
 
         # --- HTMLテーブルの生成（イベント一覧に合わせた見た目） ---
