@@ -1450,18 +1450,18 @@ def make_html_table_user(df, room_id):
     return html
 
 # ----------------------------------------------------------------------
-# HTMLテーブル生成関数 (管理者モード用 - 安全化＆壊れ文字除去版)
+# HTMLテーブル生成関数 (管理者モード用 - 改良版: 安全化 & 最終サニタイズ)
 # ----------------------------------------------------------------------
 import html
 import re
 
 def make_html_table_admin(df):
-    """管理者用HTMLテーブルを生成（ライバー名列あり、ポイントハイライトなし、終了当日ハイライトあり）"""
+    """管理者用HTMLテーブルを生成（安全化・壊れ文字除去付）"""
 
-    # END_TODAY_HIGHLIGHTからカラーコードを抽出し、CSSの二重定義を回避
+    # END_TODAY_HIGHLIGHT から色を抽出
     end_today_color_code = END_TODAY_HIGHLIGHT.replace('background-color: ', '').replace(';', '')
 
-    # HTMLヘッダ（CSS）
+    # HTML ヘッダ（CSS）
     html_output = f"""
     <style>
     .scroll-table {{ max-height: 520px; overflow-y: auto; overflow-x: auto; border: 1px solid #ddd; border-radius: 6px; text-align: center; width: 100%; -webkit-overflow-scrolling: touch; }}
@@ -1507,16 +1507,16 @@ def make_html_table_admin(df):
     </tr></thead><tbody>
     """
 
-    # 内部ユーティリティ：文字列を安全化（制御文字・壊れ文字を削除して HTML エスケープ）
+    # 安全化ユーティリティ
     def safe_text(s):
         if s is None:
             return ""
         s = str(s)
-        # 制御文字と U+FFFD を除去（これがタグ破壊の主因）
-        s = re.sub(r"[\x00-\x1F\x7F\uFFFD]", "", s)
+        # 制御文字・DEL・壊れ文字(U+FFFD)・全角スペース(U+3000)を除去
+        s = re.sub(r"[\x00-\x1F\x7F\uFFFD\u3000]", "", s)
         return html.escape(s)
 
-    # 行ごとにHTMLを構築
+    # テーブル行生成（壊れても例外をログ化して継続）
     for _, r in df.iterrows():
         try:
             cls = "end_today" if r.get("is_end_today") else ("ongoing" if r.get("is_ongoing") else "")
@@ -1533,7 +1533,7 @@ def make_html_table_admin(df):
             event_id = safe_text(r.get("event_id"))
             room_id_disp = safe_text(room_id_raw)
 
-            # ポイントは数値ならフォーマット、それ以外は安全化して出力
+            # ポイント整形
             point_raw = r.get("ポイント")
             if pd.notna(point_raw) and str(point_raw) not in ("-", ""):
                 try:
@@ -1553,11 +1553,12 @@ def make_html_table_admin(df):
             html_output += "</tr>"
 
         except Exception as e:
-            # HTML生成エラーを出力して処理継続（個別行の破壊を避ける）
+            # 個別行で失敗しても処理は続ける（原因の特定ログを出す）
             st.error(f"HTML生成エラー: {e}")
 
-    # 最終的に念のため壊れ文字が混入していれば除去して返す
-    html_output = html_output.replace("\uFFFD", "")
+    # 最終的な全体サニタイズ：念のため不正コードポイントを削除してから返却
+    # （タグ名の中に混入する可能性のある文字を根絶）
+    html_output = re.sub(r"[\x00-\x1F\x7F\uFFFD\u3000]", "", html_output)
     html_output += "</tbody></table></div>"
     return html_output
 
