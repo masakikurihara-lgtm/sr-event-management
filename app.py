@@ -1469,25 +1469,6 @@ def clean_df(df):
     return df
 
 
-def debug_scan_df(df):
-    import re
-    bad_rows = []
-    bad_pattern = re.compile(r"[\x00-\x1F\x7F\uFFFD\u3000]")
-
-    for idx, row in df.iterrows():
-        for col, val in row.items():
-            s = str(val)
-            if bad_pattern.search(s):
-                bad_rows.append((idx, col, s))
-
-    st.write("=== 壊れ文字スキャン結果 ===")
-    if not bad_rows:
-        st.write("壊れ文字は検出されませんでした。")
-    else:
-        for r in bad_rows[:50]:
-            st.write(r)
-            
-
 # ----------------------------------------------------------------------
 # HTMLテーブル生成関数 (管理者モード用 - 改良版: 安全化 & 最終サニタイズ)
 # ----------------------------------------------------------------------
@@ -1495,45 +1476,6 @@ import html
 import re
 
 def make_html_table_admin(df):
-    import traceback
-    st.write("🟦 make_html_table_admin: START")
-
-    # 1) まず、関数内の変数が生きているか全部チェック
-    try:
-        st.write("✔ df rows =", len(df))
-    except Exception as e:
-        st.error("❌ df チェックでエラー")
-        st.error(traceback.format_exc())
-        return "<p>ERROR: df</p>"
-
-    try:
-        st.write("✔ END_TODAY_HIGHLIGHT =", END_TODAY_HIGHLIGHT)
-    except Exception as e:
-        st.error("❌ END_TODAY_HIGHLIGHT が未定義")
-        st.error(traceback.format_exc())
-        return "<p>ERROR: END_TODAY_HIGHLIGHT</p>"
-
-    # 2) 1行だけ先に処理してみて、そこで落ちないか確認
-    try:
-        sample = df.iloc[0]
-        st.write("✔ sample row loaded")
-        st.write(sample)
-    except Exception as e:
-        st.error("❌ df.iloc[0] が読み込めない")
-        st.error(traceback.format_exc())
-        return "<p>ERROR: df.iloc</p>"
-
-    # 3) 1行の安全化チェック
-    try:
-        st.write("✔ sample イベント名 =", sample.get("イベント名"))
-        st.write("✔ sample ルームID =", sample.get("ルームID"))
-    except Exception as e:
-        st.error("❌ sample row の key が存在しない")
-        st.error(traceback.format_exc())
-        return "<p>ERROR: sample row keys</p>"
-
-    st.write("🟩 初期デバッグ完了 → 本処理へ")
-
 
     # END_TODAY_HIGHLIGHT から色を抽出
     end_today_color_code = END_TODAY_HIGHLIGHT.replace('background-color: ', '').replace(';', '')
