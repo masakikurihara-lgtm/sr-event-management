@@ -1497,10 +1497,17 @@ import html
 import re
 
 def make_html_table_admin(df):
-    """管理者用HTMLテーブルを生成（安全化・壊れ文字除去付）"""
+    import traceback
+    try:
+        dummy = END_TODAY_HIGHLIGHT
+    except Exception:
+        st.error("❌ END_TODAY_HIGHLIGHT が未定義")
+        st.error(traceback.format_exc())
+        return "<p>ERROR</p>"
 
     # END_TODAY_HIGHLIGHT から色を抽出
     end_today_color_code = END_TODAY_HIGHLIGHT.replace('background-color: ', '').replace(';', '')
+
 
     # HTML ヘッダ（CSS）
     html_output = f"""
