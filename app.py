@@ -1450,6 +1450,19 @@ def make_html_table_user(df, room_id):
     return html
 
 
+def clean_df(df):
+    import re
+    df = df.copy()
+
+    # 全列に対して制御文字・FFFD・全角スペースを除去
+    for c in df.columns:
+        df[c] = df[c].astype(str).apply(
+            lambda s: re.sub(r"[\x00-\x1F\x7F\uFFFD\u3000]", "", s)
+        )
+
+    return df
+
+
 def debug_scan_df(df):
     import re
 
@@ -1469,6 +1482,8 @@ def debug_scan_df(df):
         for r in bad_rows[:50]:
             st.write(r)
 
+
+df_show = clean_df(df_show)   # ← これを追加！（必須）
 
 debug_scan_df(df_show)
 html = make_html_table_admin(df_show)
