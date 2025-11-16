@@ -1581,7 +1581,7 @@ def make_html_table_admin(df):
 
     # 最終的な全体サニタイズ：念のため不正コードポイントを削除してから返却
     # （タグ名の中に混入する可能性のある文字を根絶）
-    html_output = re.sub(r"[\x00-\x1F\x7F\uFFFD\u3000]", "", html_output)
+    html_output = re.sub(r"[\x00-\x1F\x7F\uFFFD]", "", html_output)
     html_output += "</tbody></table></div>"
     return html_output
 
