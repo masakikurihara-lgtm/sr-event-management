@@ -1745,7 +1745,7 @@ if is_admin:
         # --- HTMLテーブルの生成（イベント一覧に合わせた見た目） ---
         html = """
         <style>
-        .add-table { width: 100%; border-collapse: collapse; font-size:14px; margin-top:8px; }
+        .add-table { width: 100%; border-collapse: collapse; font-size:14px; margin-top:8px; table-layout: auto; }
         .add-table thead th { background:#0b66c2; color:#fff; padding:8px; border:1px solid #e8eef7; text-align:center; position: sticky; top: 0; z-index: 5; }
         .add-table td { padding:8px; border:1px solid #f2f6fb; text-align:center !important; vertical-align: middle; }
         .add-table td.left { text-align:left !important; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px; }
