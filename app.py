@@ -1463,8 +1463,10 @@ def clean_df(df):
     df = df.copy()
 
     for c in df.columns:
+        # データ型を必ず文字列にしてから処理
+        # s: re.sub(r"[\x00-\x1F\x7F\uFFFD\u3000]", "", s)
         df[c] = df[c].astype(str).apply(
-            lambda s: re.sub(r"[\x00-\x1F\x7F\uFFFD\u3000]", "", s)
+            lambda s: re.sub(r"[\x00-\x1F\x7F\uFFFD\u3000]", "", s) # 変更なし
         )
     return df
 
@@ -1531,10 +1533,11 @@ def make_html_table_admin(df):
     def safe_text(s):
         if s is None:
             return ""
-        s = str(s)
+        s = str(s) # ここで確実に文字列に変換
         # 制御文字・DEL・壊れ文字(U+FFFD)・全角スペース(U+3000)を除去
+        # ここで全角スペースを除去
         s = re.sub(r"[\x00-\x1F\x7F\uFFFD\u3000]", "", s)
-        return html.escape(s)
+        return html.escape(s) # HTMLエスケープ
 
     # テーブル行生成（壊れても例外をログ化して継続）
     for _, r in df.iterrows():
