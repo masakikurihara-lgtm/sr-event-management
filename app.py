@@ -1449,6 +1449,32 @@ def make_html_table_user(df, room_id):
     html += "</tbody></table></div>"
     return html
 
+
+def debug_scan_df(df):
+    import re
+
+    bad_rows = []
+    bad_pattern = re.compile(r"[\x00-\x1F\x7F\uFFFD\u3000]")
+
+    for idx, row in df.iterrows():
+        for col, val in row.items():
+            s = str(val)
+            if bad_pattern.search(s):
+                bad_rows.append((idx, col, s))
+
+    st.write("=== 壊れ文字スキャン結果 ===")
+    if not bad_rows:
+        st.write("壊れ文字は検出されませんでした。")
+    else:
+        for r in bad_rows[:50]:
+            st.write(r)
+
+
+debug_scan_df(df_show)
+html = make_html_table_admin(df_show)
+st.markdown(html, unsafe_allow_html=True)
+
+
 # ----------------------------------------------------------------------
 # HTMLテーブル生成関数 (管理者モード用 - 改良版: 安全化 & 最終サニタイズ)
 # ----------------------------------------------------------------------
