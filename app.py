@@ -1450,22 +1450,27 @@ def make_html_table_user(df, room_id):
     return html
 
 
+# ----------------------------------------------------------------------
+# 必要な関数を *先に定義*
+# ----------------------------------------------------------------------
+
+import html
+import re
+import traceback
+
 def clean_df(df):
     import re
     df = df.copy()
 
-    # 全列に対して制御文字・FFFD・全角スペースを除去
     for c in df.columns:
         df[c] = df[c].astype(str).apply(
             lambda s: re.sub(r"[\x00-\x1F\x7F\uFFFD\u3000]", "", s)
         )
-
     return df
 
 
 def debug_scan_df(df):
     import re
-
     bad_rows = []
     bad_pattern = re.compile(r"[\x00-\x1F\x7F\uFFFD\u3000]")
 
@@ -1481,14 +1486,7 @@ def debug_scan_df(df):
     else:
         for r in bad_rows[:50]:
             st.write(r)
-
-
-df_show = clean_df(df_show)   # ← これを追加！（必須）
-
-debug_scan_df(df_show)
-html = make_html_table_admin(df_show)
-st.markdown(html, unsafe_allow_html=True)
-
+            
 
 # ----------------------------------------------------------------------
 # HTMLテーブル生成関数 (管理者モード用 - 改良版: 安全化 & 最終サニタイズ)
