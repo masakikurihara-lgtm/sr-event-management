@@ -2000,7 +2000,7 @@ if selected_names:
                 u_df['イベント名'] = pd.Categorical(u_df['イベント名'], categories=saved_names, ordered=True)
                 u_df = u_df.sort_values('イベント名')
 
-                st.write(f"### 👤 {u_name} さんの集計詳細")
+                st.write(f"###### 👤 {u_name} さんの集計詳細")
                 
                 # --- 表の表示：値をそのまま出し、末尾に % を添える設定 ---
                 st.dataframe(
