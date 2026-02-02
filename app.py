@@ -2006,6 +2006,7 @@ if selected_names:
                 )
 
                 st.write("")
+                st.write("")
 
                 # --- グラフの表示：表の数値（41.59）と整合性を取る ---
                 import altair as alt
