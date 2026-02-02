@@ -1879,11 +1879,16 @@ def fetch_contribution_ranking_data(event_id, room_id):
         return []
 
 def reset_analysis_settings():
-    """集計開始時に以前の設定をクリアする"""
-    keys_to_reset = ["summary_df", "combined_df", "last_selected_names", "alert_diff", "alert_base"]
-    for key in keys_to_reset:
+    """集計開始時に以前の設定をクリアし、入力欄を初期値に戻す"""
+    # 1. データ関連は del で削除して非表示にする
+    for key in ["summary_df", "combined_df", "last_selected_names"]:
         if key in st.session_state:
             del st.session_state[key]
+    
+    # 2. 入力ウィジェットの値は del ではなく「初期値の代入」で上書きする
+    # これにより、次に描画される際にこの値が強制的に反映されます
+    st.session_state["alert_diff"] = 25  # デフォルト値
+    st.session_state["alert_base"] = 9   # デフォルト値
 
 # 3. 集計実行
 if selected_names:
