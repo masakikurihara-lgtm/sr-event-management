@@ -1836,3 +1836,92 @@ else:
     cols_to_drop = [c for c in ["is_ongoing", "__highlight_style", "URL", "ルームID"] if c in df_show.columns]
     csv_bytes = df_show.drop(columns=cols_to_drop).to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
     st.download_button("CSVダウンロード", data=csv_bytes, file_name="event_history.csv", key="user_csv_download")
+
+
+
+# =========================================================
+# 📊 追加機能: イベント貢献ランキング分析セクション
+# =========================================================
+st.write("---")
+st.subheader("📊 選択イベントの貢献度集計・分析")
+
+# 1. 既存の df_show から選択肢を作成
+# 選択を容易にするため「イベント名」を表示し、内部的に「event_id」を紐付ける
+event_options = df_show["イベント名"].tolist()
+selected_names = st.multiselect(
+    "分析対象のイベントを複数選択してください（最大5件程度を推奨）",
+    options=event_options,
+    help="選択したイベントの貢献100位までのデータを合算します。"
+)
+
+# 2. 貢献データを取得する関数（新規追加）
+@st.cache_data(ttl=3600) # 1時間はキャッシュを保持
+def fetch_contribution_ranking_data(event_id, room_id):
+    api_url = f"https://www.showroom-live.com/api/event/contribution_ranking?event_id={event_id}&room_id={room_id}"
+    try:
+        r = requests.get(api_url, headers=HEADERS, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        return data.get("ranking", [])
+    except Exception as e:
+        return []
+
+# 3. 集計実行ボタン
+if selected_names:
+    if st.button("📊 選択したイベントを集計する"):
+        all_data = []
+        progress_text = st.empty()
+        bar = st.progress(0)
+        
+        # 選択されたイベント名から event_id を逆引きしてAPIを叩く
+        for i, name in enumerate(selected_names):
+            # 既存のdfから対応するevent_idを取得
+            target_row = df[df["イベント名"] == name].iloc[0]
+            eid = target_row["event_id"]
+            
+            progress_text.text(f"取得中: {name}...")
+            ranking = fetch_contribution_ranking_data(eid, room_id)
+            
+            if ranking:
+                temp_df = pd.DataFrame(ranking)
+                temp_df["対象イベント"] = name
+                all_data.append(temp_df)
+            
+            bar.progress((i + 1) / len(selected_names))
+            time.sleep(0.2) # 負荷軽減
+        
+        bar.empty()
+        progress_text.empty()
+
+        if all_data:
+            # 全データを1つに結合
+            combined_df = pd.concat(all_data, ignore_index=True)
+            
+            # user_id をキーに集計（退会ユーザーも一意のIDで紐付け）
+            # 100位以下のデータはAPIに含まれないため、あくまで「各イベント100位以内の合算」となる点に注意
+            summary_df = combined_df.groupby("user_id").agg({
+                "name": "last",          # 最後に取得した名前を表示
+                "point": "sum",          # ポイント合算
+                "rank": "mean",          # 平均順位（参考値）
+                "対象イベント": "count"    # 何回100位以内に入ったか
+            }).rename(columns={
+                "point": "合計ポイント",
+                "対象イベント": "100位入賞回数",
+                "rank": "平均順位"
+            }).sort_values("合計ポイント", ascending=False)
+
+            # 表示用の整形
+            summary_df["平均順位"] = summary_df["平均順位"].map('{:.1f}'.format)
+            summary_df["合計ポイント"] = summary_df["合計ポイント"].map('{:,}'.format)
+
+            st.success(f"集計完了: {len(selected_names)} 件のイベントを合算しました。")
+            
+            # 集計結果の表示
+            st.write("### 🏆 合算貢献ランキング (TOP 100)")
+            st.dataframe(summary_df.head(100), use_container_width=True)
+            
+            # CSVダウンロード（分析結果用）
+            res_csv = summary_df.to_csv(index=True, encoding="utf-8-sig").encode("utf-8-sig")
+            st.download_button("集計結果をCSVで保存", data=res_csv, file_name="combined_contribution.csv")
+        else:
+            st.error("ランキングデータを取得できませんでした。")
