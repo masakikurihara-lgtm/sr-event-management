@@ -1920,9 +1920,9 @@ if selected_names:
             summary_df = summary_df.sort_values("ランキング")
 
             # 表示用の整形（カンマ区切りと小数点）
-            summary_df["合計ポイント"] = summary_df["合計ポイント"].map('{:,}'.format)
-            summary_df["入賞時平均ポイント"] = summary_df["入賞時平均ポイント"].map('{:,.1f}'.format)
-            summary_df["入賞時平均順位"] = summary_df["入賞時平均順位"].map('{:.1f}'.format)
+            # summary_df["合計ポイント"] = summary_df["合計ポイント"].map('{:,}'.format)
+            # summary_df["入賞時平均ポイント"] = summary_df["入賞時平均ポイント"].map('{:,.1f}'.format)
+            # summary_df["入賞時平均順位"] = summary_df["入賞時平均順位"].map('{:.1f}'.format)
 
             st.success(f"集計完了: {len(selected_names)} 件のイベントを合算しました。")
             
