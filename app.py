@@ -2009,7 +2009,7 @@ if selected_names:
                     subset=['順位', '支援ポイント', '支援割合']
                 )
 
-                st.write(f"###### 👤 {u_name} さんの集計詳細")
+                st.write(f"###### 👤 {u_name} さんの貢献詳細")
                 
                 st.dataframe(
                     styled_df, 
