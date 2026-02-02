@@ -1954,7 +1954,9 @@ if selected_names:
 
         # --- 詳細分析セクション ---
         st.write("---")
-        st.subheader("🔍 特定ユーザーの詳細分析")
+        # st.subheader("🔍 特定ユーザーの詳細分析")
+        st.write("##### 🔍 特定ユーザーの詳細分析")
+        
         
         user_map = {str(row['ユーザーID']): f"{row['ユーザー名']} ({row['ユーザーID']})" for _, row in summary_df.iterrows()}
         target_user_id = st.selectbox(
