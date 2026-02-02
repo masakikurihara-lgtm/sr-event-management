@@ -1953,8 +1953,8 @@ if selected_names:
                 "入賞時平均ポイント": st.column_config.NumberColumn("入賞時平均ポイント", width="medium", format="%.1f"),
                 "入賞時平均順位": st.column_config.NumberColumn("入賞時平均順位", width="medium", format="%.1f"),
                 # 【追加】100位の前に25位を配置。幅は100位と同様 medium
-                "25位入賞回数": st.column_config.NumberColumn("25位内入賞回数", width="medium", format="%d"),
-                "100位入賞回数": st.column_config.NumberColumn("100位内入賞回数", width="medium", format="%d"),
+                "25位入賞回数": st.column_config.NumberColumn("25位内入賞回数", width="small", format="%d"),
+                "100位入賞回数": st.column_config.NumberColumn("100位内入賞回数", width="small", format="%d"),
                 "ユーザーID": st.column_config.TextColumn("ユーザーID", width="medium"),
             }
         )
