@@ -1894,7 +1894,11 @@ if selected_names:
         bar.empty()
         progress_text.empty()
 
-        if all_data:
+        if all_data or "keep_summary" in st.session_state:
+            if "keep_summary" in st.session_state:
+                summary_df = st.session_state["keep_summary"]
+                combined_df = st.session_state["keep_combined"]
+                selected_names = st.session_state["keep_names"]
             combined_df = pd.concat(all_data, ignore_index=True)
             
             # ②・③・④ 各項目の集計
@@ -1926,6 +1930,10 @@ if selected_names:
             summary_df["入賞時平均順位"] = summary_df["入賞時平均順位"].map('{:.1f}'.format)
 
             st.success(f"集計完了: {len(selected_names)} 件のイベントを合算しました。")
+
+            st.session_state["keep_summary"] = summary_df
+            st.session_state["keep_combined"] = combined_df
+            st.session_state["keep_names"] = selected_names
             
             # 結果表示
             st.write("### 🏆 合算貢献ランキング (TOP 100)")
