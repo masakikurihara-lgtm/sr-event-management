@@ -1932,7 +1932,7 @@ if selected_names:
         # ⚠️ map処理を削除またはコメントアウトします。
         # 文字列に変換せず、数値のまま st.dataframe に渡すのがポイントです。
 
-        st.write("### 🏆 合算貢献ランキング (TOP 100)")
+        st.write("##### 🏆 合算貢献ランキング (TOP 100)")
         st.dataframe(
             display_df.head(100),
             use_container_width=True,
