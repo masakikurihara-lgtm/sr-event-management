@@ -1914,7 +1914,7 @@ if selected_names:
             # 結果をセッションに保存
             st.session_state["summary_df"] = summary_df
             st.session_state["combined_df"] = combined_df
-            st.session_state["last_selected_names"] = selected_names
+            st.session_state["last_selected_names"] = sorted_selected_names 
             st.success(f"集計完了: {len(selected_names)} 件のイベントを合算しました。")
         else:
             st.error("ランキングデータを取得できませんでした。")
