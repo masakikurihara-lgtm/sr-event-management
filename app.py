@@ -1955,7 +1955,7 @@ if selected_names:
                 # 【追加】100位の前に25位を配置。幅は100位と同様 medium
                 "25位入賞回数": st.column_config.NumberColumn("25位内入賞回数", width="medium", format="%d"),
                 "100位入賞回数": st.column_config.NumberColumn("100位内入賞回数", width="medium", format="%d"),
-                "ユーザーID": st.column_config.TextColumn("ユーザーID", width="medium"),
+                "ユーザーID": st.column_config.NumberColumn("ユーザーID", width="medium"),
             }
         )
         
