@@ -1883,6 +1883,9 @@ def fetch_contribution_ranking_data(event_id, room_id):
 if selected_names:
     # ボタンが押されたら計算を実行し session_state に保存する
     if st.button("📊 選択したイベントを集計する"):
+        for key in ["summary_df", "combined_df", "last_selected_names"]:
+            if key in st.session_state:
+                del st.session_state[key]
         all_data = []
         progress_text = st.empty()
         bar = st.progress(0)
