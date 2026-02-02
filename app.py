@@ -1919,10 +1919,44 @@ if selected_names:
             # 合計ポイント順にソート
             summary_df = summary_df.sort_values("ランキング")
 
+            # =========================================================
+            # 📈 【ここに追加】グラフ分析セクション (整形前に行う)
+            # =========================================================
+            st.write("---")
+            st.subheader("📈 貢献推移・配分分析")
+
+            # TOP5ユーザーのIDを取得 (数値データの状態で抽出)
+            top5_ids = summary_df.head(5)["ユーザーID"].tolist()
+            top5_names = summary_df.head(5)["ユーザー名"].tolist()
+            
+            # TOP5に絞った推移用データ
+            plot_df = combined_df[combined_df["user_id"].isin(top5_ids)].copy()
+            
+            # 折れ線グラフ用のピボットテーブル作成
+            # インデックスを「対象イベント」、カラムを「ユーザー名」にしてポイントを集計
+            line_data = plot_df.pivot_table(
+                index="対象イベント", 
+                columns="name", 
+                values="point", 
+                aggfunc="sum"
+            ).fillna(0)
+            
+            # イベントの並び順を、選択した順序に固定（時系列を維持するため）
+            line_data = line_data.reindex(selected_names)
+
+            st.write("#### 🏆 TOP5ユーザーのポイント推移")
+            st.line_chart(line_data)
+
+            st.write("#### 📦 イベントごとの貢献配分（上位5名）")
+            st.bar_chart(line_data)
+            
+            st.write("---") # グラフと表の区切り
+            # =========================================================
+
             # 表示用の整形（カンマ区切りと小数点）
-            # summary_df["合計ポイント"] = summary_df["合計ポイント"].map('{:,}'.format)
-            # summary_df["入賞時平均ポイント"] = summary_df["入賞時平均ポイント"].map('{:,.1f}'.format)
-            # summary_df["入賞時平均順位"] = summary_df["入賞時平均順位"].map('{:.1f}'.format)
+            summary_df["合計ポイント"] = summary_df["合計ポイント"].map('{:,}'.format)
+            summary_df["入賞時平均ポイント"] = summary_df["入賞時平均ポイント"].map('{:,.1f}'.format)
+            summary_df["入賞時平均順位"] = summary_df["入賞時平均順位"].map('{:.1f}'.format)
 
             st.success(f"集計完了: {len(selected_names)} 件のイベントを合算しました。")
             
@@ -1945,7 +1979,6 @@ if selected_names:
                     ),
                     "合計ポイント": st.column_config.NumberColumn(
                         "合計ポイント",
-                        format="%d",
                         width="medium",
                     ),
                     "入賞時平均ポイント": st.column_config.NumberColumn(
