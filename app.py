@@ -1878,13 +1878,17 @@ def fetch_contribution_ranking_data(event_id, room_id):
     except Exception:
         return []
 
+def reset_analysis_settings():
+    """集計開始時に以前の設定をクリアする"""
+    keys_to_reset = ["summary_df", "combined_df", "last_selected_names", "alert_diff", "alert_base"]
+    for key in keys_to_reset:
+        if key in st.session_state:
+            del st.session_state[key]
+
 # 3. 集計実行
 if selected_names:
-    # ボタンが押されたら計算を実行し session_state に保存する
-    if st.button("📊 選択したイベントを集計する"):
-        for key in ["summary_df", "combined_df", "last_selected_names", "alert_diff", "alert_base"]:
-            if key in st.session_state:
-                del st.session_state[key]
+    if st.button("📊 選択したイベントを集計する", on_click=reset_analysis_settings):
+        
         all_data = []
         progress_text = st.empty()
         bar = st.progress(0)
