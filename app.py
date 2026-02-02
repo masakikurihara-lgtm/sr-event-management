@@ -1866,6 +1866,7 @@ def fetch_contribution_ranking_data(event_id, room_id):
 
 # 3. 集計実行
 if selected_names:
+    # ボタンが押されたら計算を実行し session_state に保存する
     if st.button("📊 選択したイベントを集計する"):
         all_data = []
         progress_text = st.empty()
@@ -1881,8 +1882,6 @@ if selected_names:
             if ranking:
                 temp_df = pd.DataFrame(ranking)
                 temp_df["対象イベント"] = name
-                # ⑤ 退会ユーザー名の置換処理（Unsubscribed User または 退会済みユーザー を強調）
-                # JSON上の表記揺れに対応するため str.contains を使用
                 temp_df['name'] = temp_df['name'].apply(
                     lambda x: "！！退会済みユーザー！！" if "Unsubscribed User" in str(x) or "退会済みユーザー" in str(x) else x
                 )
@@ -1896,82 +1895,93 @@ if selected_names:
 
         if all_data:
             combined_df = pd.concat(all_data, ignore_index=True)
-            
-            # ②・③・④ 各項目の集計
             summary_df = combined_df.groupby("user_id").agg({
                 "name": "last",
-                "point": ["sum", "mean"], # 合計と平均（入賞時）
-                "rank": "mean",           # 平均順位（入賞時）
-                "user_id": "count"        # 入賞回数
+                "point": ["sum", "mean"],
+                "rank": "mean",
+                "user_id": "count"
             })
-
-            # カラム名の整理
             summary_df.columns = ["ユーザー名", "合計ポイント", "入賞時平均ポイント", "入賞時平均順位", "100位入賞回数"]
             summary_df.index.name = "ユーザーID"
-
-            # ① ランキング（順位）の計算（同じポイントなら同順位：min方式）
             summary_df["ランキング"] = summary_df["合計ポイント"].rank(ascending=False, method='min').astype(int)
-
-            # 項目の並び替え（ランキングを先頭、ユーザーIDを保持）
             summary_df = summary_df.reset_index()
             cols = ["ランキング", "ユーザー名", "合計ポイント", "入賞時平均ポイント", "入賞時平均順位", "100位入賞回数", "ユーザーID"]
-            summary_df = summary_df[cols]
+            summary_df = summary_df[cols].sort_values("ランキング")
 
-            # 合計ポイント順にソート
-            summary_df = summary_df.sort_values("ランキング")
-
-            # 表示用の整形（カンマ区切りと小数点）
-            summary_df["合計ポイント"] = summary_df["合計ポイント"].map('{:,}'.format)
-            summary_df["入賞時平均ポイント"] = summary_df["入賞時平均ポイント"].map('{:,.1f}'.format)
-            summary_df["入賞時平均順位"] = summary_df["入賞時平均順位"].map('{:.1f}'.format)
-
+            # 結果をセッションに保存
+            st.session_state["summary_df"] = summary_df
+            st.session_state["combined_df"] = combined_df
+            st.session_state["last_selected_names"] = selected_names
             st.success(f"集計完了: {len(selected_names)} 件のイベントを合算しました。")
-            
-            # 結果表示
-            st.write("### 🏆 合算貢献ランキング (TOP 100)")
-            # 表示用の設定（st.dataframeの中身をリッチにする）
-            st.dataframe(
-                summary_df.head(100),
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "ランキング": st.column_config.NumberColumn(
-                        "順位", 
-                        width="small",  # 幅を狭くする
-                        format="%d",    # 整数表示
-                    ),
-                    "ユーザー名": st.column_config.TextColumn(
-                        "ユーザー名",
-                        width="large",  # 名前は長く表示
-                    ),
-                    "合計ポイント": st.column_config.NumberColumn(
-                        "合計ポイント",
-                        width="medium",
-                    ),
-                    "入賞時平均ポイント": st.column_config.NumberColumn(
-                        "入賞時平均ポイント",
-                        width="medium",
-                    ),
-                    "入賞時平均順位": st.column_config.NumberColumn(
-                        "入賞時平均順位",
-                        width="medium",
-                    ),
-                    "100位入賞回数": st.column_config.NumberColumn(
-                        "100位入賞回数",
-                        width="medium",
-                        # format="%d 回",
-                        format="%d",
-                    ),
-                    "ユーザーID": st.column_config.TextColumn(
-                        "ユーザーID",
-                        width="medium",
-                    ),
-                }
-            )
-            
-            # CSVダウンロード
-            res_csv = summary_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-            st.download_button("集計結果をCSVで保存", data=res_csv, file_name="combined_contribution.csv")
-
         else:
             st.error("ランキングデータを取得できませんでした。")
+
+    # --- 表示セクション（ボタンの外に出すことで操作しても消えないようにする） ---
+    if "summary_df" in st.session_state:
+        summary_df = st.session_state["summary_df"]
+        combined_df = st.session_state["combined_df"]
+        saved_names = st.session_state["last_selected_names"]
+
+        # 表示用に整形したコピーを作成
+        display_df = summary_df.copy()
+        display_df["合計ポイント"] = display_df["合計ポイント"].map('{:,}'.format)
+        display_df["入賞時平均ポイント"] = display_df["入賞時平均ポイント"].map('{:,.1f}'.format)
+        display_df["入賞時平均順位"] = display_df["入賞時平均順位"].map('{:.1f}'.format)
+
+        st.write("### 🏆 合算貢献ランキング (TOP 100)")
+        st.dataframe(
+            display_df.head(100),
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "ランキング": st.column_config.NumberColumn("順位", width="small", format="%d"),
+                "ユーザー名": st.column_config.TextColumn("ユーザー名", width="large"),
+                "合計ポイント": st.column_config.NumberColumn("合計ポイント", width="medium"),
+                "入賞時平均ポイント": st.column_config.NumberColumn("入賞時平均ポイント", width="medium"),
+                "入賞時平均順位": st.column_config.NumberColumn("入賞時平均順位", width="medium"),
+                "100位入賞回数": st.column_config.NumberColumn("100位入賞回数", width="medium", format="%d"),
+                "ユーザーID": st.column_config.TextColumn("ユーザーID", width="medium"),
+            }
+        )
+        
+        res_csv = summary_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+        st.download_button("集計結果をCSVで保存", data=res_csv, file_name="combined_contribution.csv")
+
+        # --- 詳細分析セクション ---
+        st.write("---")
+        st.subheader("🔍 特定ユーザーの詳細分析")
+        
+        user_map = {str(row['ユーザーID']): f"{row['ユーザー名']} ({row['ユーザーID']})" for _, row in summary_df.iterrows()}
+        target_user_id = st.selectbox(
+            "詳細を確認したいユーザーを選択してください",
+            options=list(user_map.keys()),
+            format_func=lambda x: user_map[x]
+        )
+
+        if target_user_id:
+            u_df_raw = combined_df[combined_df["user_id"].astype(str) == target_user_id].copy()
+            if not u_df_raw.empty:
+                u_name = u_df_raw["name"].iloc[-1]
+                user_event_data = []
+                for e_name in saved_names:
+                    event_match = u_df_raw[u_df_raw["対象イベント"] == e_name]
+                    user_event_data.append({
+                        "イベント名": e_name,
+                        "貢献ポイント": event_match["point"].iloc[0] if not event_match.empty else 0,
+                        "順位": int(event_match["rank"].iloc[0]) if not event_match.empty else None
+                    })
+                u_df = pd.DataFrame(user_event_data)
+
+                st.write(f"### 👤 {u_name} さんの集計詳細")
+                st.dataframe(u_df, use_container_width=True, hide_index=True,
+                            column_config={"貢献ポイント": st.column_config.NumberColumn(format="%d"),
+                                           "順位": st.column_config.NumberColumn(format="%d 位")})
+
+                import altair as alt
+                base = alt.Chart(u_df).encode(x=alt.X('イベント名:N', sort=saved_names, title='イベント名'))
+                bar = base.mark_bar(color='#5271FF', opacity=0.6).encode(y=alt.Y('貢献ポイント:Q', title='支援ポイント（棒）'))
+                line = base.mark_line(color='#FF4B4B', point=True).encode(
+                    y=alt.Y('順位:Q', title='順位（線：1位が上）', scale=alt.Scale(reverse=True)),
+                    tooltip=['イベント名', '貢献ポイント', '順位']
+                )
+                st.altair_chart(alt.layer(bar, line).resolve_scale(y='independent').properties(width='container', height=400), use_container_width=True)
