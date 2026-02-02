@@ -2076,6 +2076,8 @@ if selected_names:
                 if alert_data:
                     alert_df = pd.DataFrame(alert_data)
                     
+                    alert_df = alert_df.sort_values("順位", ascending=True)
+                    
                     # --- 追加：列の並び順を「順位」が一番左に来るように指定 ---
                     display_cols = ["順位", "ユーザー名", "種別", "イベント（前）", "順位（前）", "イベント（後）", "順位（後）", "変動幅", "ユーザーID"]
                     alert_df = alert_df[display_cols]
