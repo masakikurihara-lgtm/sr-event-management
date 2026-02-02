@@ -1916,17 +1916,17 @@ if selected_names:
         else:
             st.error("ランキングデータを取得できませんでした。")
 
-    # --- 表示セクション（ボタンの外に出すことで操作しても消えないようにする） ---
+    # --- 表示セクション ---
     if "summary_df" in st.session_state:
         summary_df = st.session_state["summary_df"]
         combined_df = st.session_state["combined_df"]
         saved_names = st.session_state["last_selected_names"]
 
-        # 表示用に整形したコピーを作成
+        # 【修正】表示用に整形したコピーを作成（計算用の数値を保持したままにする）
         display_df = summary_df.copy()
-        display_df["合計ポイント"] = display_df["合計ポイント"].map('{:,}'.format)
-        display_df["入賞時平均ポイント"] = display_df["入賞時平均ポイント"].map('{:,.1f}'.format)
-        display_df["入賞時平均順位"] = display_df["入賞時平均順位"].map('{:.1f}'.format)
+        
+        # ⚠️ map処理を削除またはコメントアウトします。
+        # 文字列に変換せず、数値のまま st.dataframe に渡すのがポイントです。
 
         st.write("### 🏆 合算貢献ランキング (TOP 100)")
         st.dataframe(
@@ -1936,9 +1936,10 @@ if selected_names:
             column_config={
                 "ランキング": st.column_config.NumberColumn("順位", width="small", format="%d 位"),
                 "ユーザー名": st.column_config.TextColumn("ユーザー名", width="large"),
-                "合計ポイント": st.column_config.NumberColumn("合計ポイント", width="medium"),
-                "入賞時平均ポイント": st.column_config.NumberColumn("入賞時平均ポイント", width="medium"),
-                "入賞時平均順位": st.column_config.NumberColumn("入賞時平均順位", width="medium"),
+                "合計ポイント": st.column_config.NumberColumn("合計ポイント", width="medium", format="%d"),
+                # 【修正】%.1f を指定することで、整数でも .0 まで表示されます
+                "入賞時平均ポイント": st.column_config.NumberColumn("入賞時平均ポイント", width="medium", format="%.1f"),
+                "入賞時平均順位": st.column_config.NumberColumn("入賞時平均順位", width="medium", format="%.1f"),
                 "100位入賞回数": st.column_config.NumberColumn("100位入賞回数", width="medium", format="%d"),
                 "ユーザーID": st.column_config.TextColumn("ユーザーID", width="medium"),
             }
