@@ -2013,7 +2013,7 @@ if selected_names:
                         "順位": st.column_config.NumberColumn("順位", format="%d 位", width="small"),
                         "支援ポイント": st.column_config.NumberColumn("支援ポイント", format="%d", width="small"),
                         "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%", width="small"),
-                        "全体(順位/pt/Lv)": st.column_config.TextColumn("全体(順位/pt/Lv)", width="small")
+                        "全体(順位/pt/Lv)": st.column_config.NumberColumn("全体(順位/pt/Lv)", width="small")
                     }
                 )
 
