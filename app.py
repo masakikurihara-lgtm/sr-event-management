@@ -1965,11 +1965,10 @@ if selected_names:
                 user_event_data = []
                 
                 for e_name in saved_names:
-                    # 分母：イベント一覧(df)から取得（カンマ除去を徹底）
+                    # 分母の取得
                     target_event_row = df[df["イベント名"] == e_name]
                     if not target_event_row.empty:
                         raw_val = target_event_row["ポイント"].iloc[0]
-                        # 確実に数値化（カンマを除去してfloatへ）
                         event_total_point = float(str(raw_val).replace(',', ''))
                     else:
                         event_total_point = 0
@@ -1978,8 +1977,7 @@ if selected_names:
                     p_val = event_match["point"].iloc[0] if not event_match.empty else 0
                     r_val = int(event_match["rank"].iloc[0]) if not event_match.empty else None
                     
-                    # 支援割合の計算（個人のポイント ÷ イベント総ポイント）
-                    # 例: 487523 / 1172301 = 0.4158...
+                    # 割合は「小数（0.4158...）」で保持する（これがStreamlit/Altairの標準）
                     share = (p_val / event_total_point) if event_total_point > 0 else 0
                     
                     user_event_data.append({
@@ -1993,7 +1991,7 @@ if selected_names:
 
                 st.write(f"### 👤 {u_name} さんの集計詳細")
                 
-                # 成績一覧表
+                # --- 表の表示修正 ---
                 st.dataframe(
                     u_df, 
                     use_container_width=True, 
@@ -2001,13 +1999,13 @@ if selected_names:
                     column_config={
                         "順位": st.column_config.NumberColumn("順位", format="%d 位"),
                         "支援ポイント": st.column_config.NumberColumn("支援ポイント", format="%d"),
-                        # format="%.2f %%" は「0.4158」を「41.58 %」として表示します
-                        "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%"),
+                        # format="%.2f%%" は小数を100倍して%表示します（0.4158 → 41.58%）
+                        "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f%%"),
                         "イベント名": st.column_config.TextColumn("イベント名")
                     }
                 )
 
-                # --- グラフ表示（ここもカラム名を同期） ---
+                # --- グラフ表示修正 ---
                 import altair as alt
                 base = alt.Chart(u_df).encode(x=alt.X('イベント名:N', sort=saved_names, title='イベント名'))
                 bar = base.mark_bar(color='#5271FF', opacity=0.6).encode(
@@ -2019,7 +2017,7 @@ if selected_names:
                         alt.Tooltip('イベント名:N'),
                         alt.Tooltip('支援ポイント:Q', format=','),
                         alt.Tooltip('順位:Q'),
-                        alt.Tooltip('支援割合:Q', format='.2%') # グラフ上も%表記に
+                        alt.Tooltip('支援割合:Q', format='.2%') # 小数を%形式で表示
                     ]
                 )
                 st.altair_chart(alt.layer(bar, line).resolve_scale(y='independent').properties(width='container', height=400), use_container_width=True)
