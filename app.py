@@ -2011,7 +2011,7 @@ if selected_names:
                                 "順位（前）": f"{prev_r}位",
                                 "イベント（後）": curr_row["対象イベント"],
                                 "順位（後）": f"{curr_r}位",
-                                "変動幅": f"+{diff}位ダウン",
+                                "変動幅": f"{diff}位ダウン",
                                 "ユーザーID": uid
                             })
                         
@@ -2042,7 +2042,7 @@ if selected_names:
                         hide_index=True,
                         column_config={
                             "ユーザー名": st.column_config.TextColumn("ユーザー名", width="medium"),
-                            "種別": st.column_config.TextColumn("種別", width="small"),
+                            "種別": st.column_config.TextColumn("種別", width="medium"),
                             "変動幅": st.column_config.TextColumn("変動詳細", width="medium"),
                         }
                     )
