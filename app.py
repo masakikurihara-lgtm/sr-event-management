@@ -335,6 +335,20 @@ is_admin = (room_id == "mksp154851")
 do_show = st.session_state.show_data and room_id != ""
 
 
+# --- ライバー変更検知と集計リセット ---
+if "current_room_id" not in st.session_state:
+    st.session_state["current_room_id"] = room_id
+
+# 入力されたroom_idが保存されているIDと違う場合、古いデータを消す
+if st.session_state["current_room_id"] != room_id:
+    keys_to_reset = ["summary_df", "combined_df", "last_selected_names"]
+    for key in keys_to_reset:
+        if key in st.session_state:
+            del st.session_state[key]
+    # 管理用IDを現在のものに更新
+    st.session_state["current_room_id"] = room_id
+
+
 # =========================================================
 # 【追加】登録ユーザー判定 ("touroku"で始まる入力)
 # =========================================================
