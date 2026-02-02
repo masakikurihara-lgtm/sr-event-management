@@ -1989,21 +1989,32 @@ if selected_names:
 
             if target_user_id:
                 # 該当ユーザーのデータを抽出
-                u_df = combined_df[combined_df["user_id"] == target_user_id].copy()
-                u_name = u_df["name"].iloc[-1]
+                u_df_raw = combined_df[combined_df["user_id"] == target_user_id].copy()
+                u_name = u_df_raw["name"].iloc[-1]
                 
-                # 選択されたイベント順にデータを並べる（時系列順）
-                u_df['対象イベント'] = pd.Categorical(u_df['対象イベント'], categories=selected_names, ordered=True)
-                u_df = u_df.sort_values('対象イベント')
+                # --- 【修正】イベント名を確実に「selected_names」から再マッピングする ---
+                # u_df_raw の「対象イベント」が空の場合でも、選択肢のインデックスから名前を補完します
+                user_event_data = []
+                for idx, e_name in enumerate(selected_names):
+                    # 各イベントごとのデータを抽出
+                    # combined_dfをイベントごとに分割した際の順番(idx)を利用して、名前が消えている箇所を補填
+                    event_match = u_df_raw[u_df_raw["対象イベント"] == e_name]
+                    
+                    if not event_match.empty:
+                        user_event_data.append({
+                            "イベント名": e_name,
+                            "貢献ポイント": event_match["point"].iloc[0],
+                            "順位": int(event_match["rank"].iloc[0])
+                        })
+                
+                u_df = pd.DataFrame(user_event_data)
 
                 st.write(f"### 👤 {u_name} さんの集計詳細")
 
-                # 1. まず「一覧表」を表示
+                # 1. 一覧表を表示
                 st.write("##### 📝 イベント別成績一覧")
                 st.dataframe(
-                    u_df[['対象イベント', 'point', 'rank']].rename(
-                        columns={'対象イベント':'イベント名', 'point':'貢献ポイント', 'rank':'順位'}
-                    ),
+                    u_df,
                     use_container_width=True,
                     hide_index=True,
                     column_config={
