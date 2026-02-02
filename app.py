@@ -1961,6 +1961,96 @@ if selected_names:
         res_csv = summary_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
         st.download_button("集計結果をCSVで保存", data=res_csv, file_name="combined_contribution.csv")
 
+
+
+        # =========================================================
+        # 📈 順位変動（急上昇・急下落）分析機能
+        # =========================================================
+        st.write("---")
+        st.markdown("#### 📈 上位層の順位急変動アラート")
+
+        with st.expander("設定と抽出条件", expanded=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                # 変動幅のしきい値設定
+                diff_threshold = st.number_input("検知する変動順位幅（25〜50）", min_value=25, max_value=100, value=25, step=5)
+            with col2:
+                # 起点となる上位ランクの定義
+                base_rank_limit = st.number_input("起点ランクの定義（例: 9位以内）", min_value=1, max_value=20, value=9)
+
+        if "combined_df" in st.session_state:
+            c_df = st.session_state["combined_df"].copy()
+            ev_list = st.session_state["last_selected_names"]
+            
+            if len(ev_list) < 2:
+                st.warning("変動を分析するには、2つ以上のイベントを選択してください。")
+            else:
+                alert_data = []
+                
+                # ユーザーごとにイベント時系列順でループ
+                for uid, group in c_df.groupby("user_id"):
+                    # 選択されたイベント順にソート
+                    group['ev_order'] = group['対象イベント'].apply(lambda x: ev_list.index(x) if x in ev_list else 999)
+                    group = group.sort_values('ev_order')
+                    
+                    # 前後のイベントを比較
+                    for i in range(len(group) - 1):
+                        prev_row = group.iloc[i]
+                        curr_row = group.iloc[i+1]
+                        
+                        prev_r = prev_row["rank"]
+                        curr_r = curr_row["rank"]
+                        diff = curr_r - prev_r
+                        
+                        # ケースA: 大幅下落（前回一桁 -> 今回 大幅ダウン）
+                        if prev_r <= base_rank_limit and diff >= diff_threshold:
+                            alert_data.append({
+                                "ユーザー名": prev_row["name"],
+                                "種別": "🔻大幅下落",
+                                "イベント（前）": prev_row["対象イベント"],
+                                "順位（前）": f"{prev_r}位",
+                                "イベント（後）": curr_row["対象イベント"],
+                                "順位（後）": f"{curr_r}位",
+                                "変動幅": f"+{diff}位ダウン",
+                                "ユーザーID": uid
+                            })
+                        
+                        # ケースB: 大幅上昇（今回一桁 <- 前回 大幅ダウン状態）
+                        elif curr_r <= base_rank_limit and diff <= -diff_threshold:
+                            alert_data.append({
+                                "ユーザー名": curr_row["name"],
+                                "種別": "🚀大幅上昇",
+                                "イベント（前）": prev_row["対象イベント"],
+                                "順位（前）": f"{prev_r}位",
+                                "イベント（後）": curr_row["対象イベント"],
+                                "順位（後）": f"{curr_r}位",
+                                "変動幅": f"{abs(diff)}位アップ",
+                                "ユーザーID": uid
+                            })
+
+                if alert_data:
+                    alert_df = pd.DataFrame(alert_data)
+                    
+                    # 表示設定
+                    def highlight_diff(val):
+                        color = '#ff9999' if "下落" in str(val) else '#99ff99'
+                        return f'background-color: {color}; color: black; font-weight: bold;'
+
+                    st.dataframe(
+                        alert_df.style.map(highlight_diff, subset=['種別']),
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "ユーザー名": st.column_config.TextColumn("ユーザー名", width="medium"),
+                            "種別": st.column_config.TextColumn("種別", width="small"),
+                            "変動幅": st.column_config.TextColumn("変動詳細", width="medium"),
+                        }
+                    )
+                else:
+                    st.info("条件に合致する急変動ユーザーは見つかりませんでした。")
+
+
+
         # --- 詳細分析セクション ---
         st.write("---")
         # st.subheader("🔍 特定ユーザーの詳細分析")
