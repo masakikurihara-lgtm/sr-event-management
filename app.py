@@ -1987,23 +1987,22 @@ if selected_names:
                     r_val = int(event_match["rank"].iloc[0]) if not event_match.empty else None
                     share_pct = (p_val / event_total_point * 100) if event_total_point > 0 else 0
                     
-                    # 縦線や記号を廃止。正確な数値を半角スペースだけで区切る
-                    # 例: "2位 2,117,911 L2"
-                    total_info = f"{event_total_rank}位 {event_total_point:,.0f} L{event_level}"
+                    # 指示通りの表記: 「2位 / 356,257 / L2」
+                    total_info = f"{event_total_rank}位 / {event_total_point:,.0f} / L{event_level}"
                     
                     user_event_data.append({
                         "イベント名": e_name,
                         "順位": r_val,
                         "支援ポイント": p_val,
                         "支援割合": share_pct,
-                        "全体(順位 pt Lv)": total_info
+                        "全体(順位 / pts / Lv)": total_info # ここに集約
                     })
                 
                 u_df = pd.DataFrame(user_event_data)
                 u_df['イベント名'] = pd.Categorical(u_df['イベント名'], categories=saved_names, ordered=True)
                 u_df = u_df.sort_values('イベント名')
 
-                # --- 個人実績列：太字(900) + 背景色ハイライト ---
+                # --- スタイル：個人実績（左3列）を最強の太字(900)＋背景色 ---
                 styled_df = u_df.style.map(
                     lambda x: 'background-color: #f1f3f6; font-weight: 900; color: #000000;', 
                     subset=['順位', '支援ポイント', '支援割合']
@@ -2020,10 +2019,11 @@ if selected_names:
                         "順位": st.column_config.NumberColumn("順位", format="%d 位", width="small"),
                         "支援ポイント": st.column_config.NumberColumn("支援ポイント", format="%d", width="small"),
                         "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%", width="small"),
-                        # 右寄せを強調するため、あえてTextColumnで文字として扱い、幅を最小化
-                        "全体(順位 pt Lv)": st.column_config.TextColumn(
-                            "全体(順位 pt Lv)", 
+                        # --- 【重要】全体情報は TextColumn ではなく、汎用の Column で右寄せを保証 ---
+                        "全体(順位 / pts / Lv)": st.column_config.Column(
+                            "全体(順位 / pts / Lv)", 
                             width="small",
+                            help="イベント全体の最終確定成績です"
                         )
                     }
                 )
