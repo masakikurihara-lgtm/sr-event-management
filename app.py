@@ -1940,11 +1940,11 @@ if selected_names:
             column_config={
                 "ランキング": st.column_config.NumberColumn("順位", width="small", format="%d 位"),
                 "ユーザー名": st.column_config.TextColumn("ユーザー名", width="large"),
-                "合計ポイント": st.column_config.NumberColumn("合計ポイント", width="medium", format="%d"),
+                "合計ポイント": st.column_config.NumberColumn("合計支援ポイント", width="medium", format="%d"),
                 # 【修正】%.1f を指定することで、整数でも .0 まで表示されます
                 "入賞時平均ポイント": st.column_config.NumberColumn("入賞時平均ポイント", width="medium", format="%.1f"),
                 "入賞時平均順位": st.column_config.NumberColumn("入賞時平均順位", width="medium", format="%.1f"),
-                "100位入賞回数": st.column_config.NumberColumn("100位入賞回数", width="medium", format="%d"),
+                "100位入賞回数": st.column_config.NumberColumn("100位内入賞回数", width="medium", format="%d"),
                 "ユーザーID": st.column_config.TextColumn("ユーザーID", width="medium"),
             }
         )
