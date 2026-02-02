@@ -2109,7 +2109,11 @@ if selected_names:
         st.write("##### 🔍 特定ユーザーの詳細分析")
         
         
-        user_map = {str(row['ユーザーID']): f"{row['ユーザー名']} ({row['ユーザーID']})" for _, row in summary_df.iterrows()}
+        # user_map = {str(row['ユーザーID']): f"{row['ユーザー名']} ({row['ユーザーID']})" for _, row in summary_df.iterrows()}
+        user_map = {
+            str(row['ユーザーID']): f"{row['ランキング']}位：{row['ユーザー名']} ({row['ユーザーID']})" 
+            for _, row in summary_df.iterrows()
+        }
         target_user_id = st.selectbox(
             "詳細を確認したいユーザーを選択してください",
             options=list(user_map.keys()),
