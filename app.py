@@ -2015,20 +2015,38 @@ if selected_names:
                 st.write("")
                 st.write("")
 
-                # --- グラフの表示：表の数値（41.59）と整合性を取る ---
+
                 import altair as alt
-                base = alt.Chart(u_df).encode(x=alt.X('イベント名:N', sort=saved_names, title='イベント名'))
+                
+                # 【修正箇所】axisパラメータを追加してラベルの見た目を整える
+                base = alt.Chart(u_df).encode(
+                    x=alt.X(
+                        'イベント名:N', 
+                        sort=saved_names, 
+                        title='イベント名',
+                        axis=alt.Axis(
+                            labelAngle=-45,     # ラベルを45度斜めにする
+                            labelLimit=150,     # ラベルの最大幅（ピクセル）を指定し、超える場合は「...」にする
+                            labelFontSize=11    # 文字サイズを少し調整（お好みで）
+                        )
+                    )
+                )
+                
                 bar = base.mark_bar(color='#5271FF', opacity=0.6).encode(
                     y=alt.Y('支援ポイント:Q', title='支援ポイント（棒）')
                 )
+                
                 line = base.mark_line(color='#FF4B4B', point=True).encode(
                     y=alt.Y('順位:Q', title='順位（線：1位が上）', scale=alt.Scale(reverse=True)),
                     tooltip=[
                         alt.Tooltip('イベント名:N'),
                         alt.Tooltip('支援ポイント:Q', format=','),
                         alt.Tooltip('順位:Q'),
-                        # すでに実数なので、そのまま % を表示
                         alt.Tooltip('支援割合:Q', format='.2f', title='支援割合(%)')
                     ]
                 )
-                st.altair_chart(alt.layer(bar, line).resolve_scale(y='independent').properties(width='container', height=400), use_container_width=True)
+                
+                st.altair_chart(
+                    alt.layer(bar, line).resolve_scale(y='independent').properties(width='container', height=450), # 高さを少し上げるとより見やすいです
+                    use_container_width=True
+                )
