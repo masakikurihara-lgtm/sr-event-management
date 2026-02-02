@@ -1965,33 +1965,27 @@ if selected_names:
                 user_event_data = []
                 
                 for e_name in saved_names:
-                    # --- 修正箇所: 文字列(カンマ入り)を数値に変換して取得 ---
-                    raw_point = df[df["イベント名"] == e_name]["ポイント"].iloc[0]
-                    if isinstance(raw_point, str):
-                        event_total_point = float(raw_point.replace(',', ''))
-                    else:
-                        event_total_point = float(raw_point)
+                    # 分母：イベント一覧(df)から数値として取得（エラー防止）
+                    raw_val = df[df["イベント名"] == e_name]["ポイント"].iloc[0]
+                    event_total_point = float(str(raw_val).replace(',', '')) if raw_val else 0
                     
                     event_match = u_df_raw[u_df_raw["対象イベント"] == e_name]
+                    p_val = event_match["point"].iloc[0] if not event_match.empty else 0
+                    r_val = int(event_match["rank"].iloc[0]) if not event_match.empty else None
                     
-                    point = event_match["point"].iloc[0] if not event_match.empty else 0
-                    rank = int(event_match["rank"].iloc[0]) if not event_match.empty else None
-                    
-                    # 支援割合の計算（分母を数値化したのでエラーになりません）
-                    # 小数で計算し、column_configで % 表示させます
-                    share = (point / event_total_point) if event_total_point > 0 else 0
+                    # 支援割合の計算
+                    share = (p_val / event_total_point) if event_total_point > 0 else 0
                     
                     user_event_data.append({
                         "イベント名": e_name,
-                        "順位": rank,
-                        "支援ポイント": point,
+                        "順位": r_val,
+                        "支援ポイント": p_val,
                         "支援割合": share
                     })
                 
                 u_df = pd.DataFrame(user_event_data)
 
                 st.write(f"### 👤 {u_name} さんの集計詳細")
-                
                 st.dataframe(
                     u_df, 
                     use_container_width=True, 
@@ -2004,11 +1998,30 @@ if selected_names:
                     }
                 )
 
+                # --- グラフ部分の修正（カラム名を「支援ポイント」に合わせる） ---
                 import altair as alt
-                base = alt.Chart(u_df).encode(x=alt.X('イベント名:N', sort=saved_names, title='イベント名'))
-                bar = base.mark_bar(color='#5271FF', opacity=0.6).encode(y=alt.Y('貢献ポイント:Q', title='支援ポイント（棒）'))
+                
+                # 軸の最小値・最大値を計算（グラフの表示崩れ防止）
+                base = alt.Chart(u_df).encode(
+                    x=alt.X('イベント名:N', sort=saved_names, title='イベント名')
+                )
+
+                # 棒グラフ：支援ポイント
+                bar = base.mark_bar(color='#5271FF', opacity=0.6).encode(
+                    y=alt.Y('支援ポイント:Q', title='支援ポイント（棒）')
+                )
+
+                # 線グラフ：順位（1位が上に来るように設定）
                 line = base.mark_line(color='#FF4B4B', point=True).encode(
                     y=alt.Y('順位:Q', title='順位（線：1位が上）', scale=alt.Scale(reverse=True)),
-                    tooltip=['イベント名', '貢献ポイント', '順位']
+                    tooltip=['イベント名', '支援ポイント', '順位', alt.Tooltip('支援割合:Q', format='.2%')]
                 )
-                st.altair_chart(alt.layer(bar, line).resolve_scale(y='independent').properties(width='container', height=400), use_container_width=True)
+
+                chart = alt.layer(bar, line).resolve_scale(
+                    y='independent'
+                ).properties(
+                    width='container',
+                    height=400
+                )
+
+                st.altair_chart(chart, use_container_width=True)
