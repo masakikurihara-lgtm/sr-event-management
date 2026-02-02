@@ -1934,7 +1934,7 @@ if selected_names:
             use_container_width=True,
             hide_index=True,
             column_config={
-                "ランキング": st.column_config.NumberColumn("順位", width="small", format="%d"),
+                "ランキング": st.column_config.NumberColumn("順位", width="small", format="%d 位"),
                 "ユーザー名": st.column_config.TextColumn("ユーザー名", width="large"),
                 "合計ポイント": st.column_config.NumberColumn("合計ポイント", width="medium"),
                 "入賞時平均ポイント": st.column_config.NumberColumn("入賞時平均ポイント", width="medium"),
