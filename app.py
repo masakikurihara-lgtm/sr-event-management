@@ -1992,7 +1992,6 @@ if selected_names:
                     })
                 
                 u_df = pd.DataFrame(user_event_data)
-                u_df['支援割合_label'] = u_df['支援割合'].map('{:.2f} %'.format)
 
                 # 表の並び順を更新
                 u_df['イベント名'] = pd.Categorical(u_df['イベント名'], categories=saved_names, ordered=True)
@@ -2019,6 +2018,8 @@ if selected_names:
 
 
                 import altair as alt
+                
+                u_df['支援割合_label'] = u_df['支援割合'].map('{:.2f} %'.format)
                 
                 # 【修正箇所】axisパラメータを追加してラベルの見た目を整える
                 base = alt.Chart(u_df).encode(
