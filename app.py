@@ -244,6 +244,11 @@ if 'room_name_cache' not in st.session_state:
 if 'refresh_trigger' not in st.session_state:
     st.session_state.refresh_trigger = False
 
+# アプリ起動時に一度だけ初期値をセット
+if "alert_diff" not in st.session_state:
+    st.session_state["alert_diff"] = 25
+if "alert_base" not in st.session_state:
+    st.session_state["alert_base"] = 9
 
 def toggle_sort_by_point():
     """ソート状態を切り替えるコールバック関数"""
@@ -1997,21 +2002,17 @@ if selected_names:
         with st.expander("設定と抽出条件", expanded=True):
             col1, col2 = st.columns(2)
             with col1:
-                # diff_threshold = st.number_input("検知する変動順位幅（25〜50）", min_value=25, max_value=100, value=25, step=5, key="alert_diff")
                 diff_threshold = st.number_input(
                     "検知する変動順位幅（25〜50）", 
                     min_value=25, max_value=100, 
-                    value=st.session_state.get("alert_diff", 25),
                     step=5, 
-                    key="alert_diff"
+                    key="alert_diff"  # value引数を削除
                 )
             with col2:
-                # base_rank_limit = st.number_input("起点ランクの定義（例: 9位以内）", min_value=1, max_value=20, value=9, key="alert_base")
                 base_rank_limit = st.number_input(
                     "起点ランクの定義（例: 9位以内）", 
                     min_value=1, max_value=20, 
-                    value=st.session_state.get("alert_base", 9),
-                    key="alert_base"
+                    key="alert_base"  # value引数を削除
                 )
 
         if "combined_df" in st.session_state:
