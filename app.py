@@ -1935,7 +1935,7 @@ if selected_names:
                 hide_index=True,
                 column_config={
                     "ランキング": st.column_config.NumberColumn(
-                        "位", 
+                        "順位", 
                         width="small",  # 幅を狭くする
                         format="%d",    # 整数表示
                     ),
@@ -1943,26 +1943,27 @@ if selected_names:
                         "ユーザー名",
                         width="large",  # 名前は長く表示
                     ),
-                    "合計ポイント": st.column_config.TextColumn(
+                    "合計ポイント": st.column_config.NumberColumn(
                         "合計ポイント",
                         width="medium",
                     ),
-                    "入賞時平均ポイント": st.column_config.TextColumn(
+                    "入賞時平均ポイント": st.column_config.NumberColumn(
                         "入賞時平均ポイント",
                         width="medium",
                     ),
-                    "入賞時平均順位": st.column_config.TextColumn(
+                    "入賞時平均順位": st.column_config.NumberColumn(
                         "入賞時平均順位",
-                        width="small",
+                        width="medium",
                     ),
                     "100位入賞回数": st.column_config.NumberColumn(
-                        "入賞回数",
-                        width="small",
-                        format="%d 回",
+                        "100位入賞回数",
+                        width="medium",
+                        # format="%d 回",
+                        format="%d",
                     ),
                     "ユーザーID": st.column_config.TextColumn(
                         "ユーザーID",
-                        width="medium",
+                        width="small",
                     ),
                 }
             )
