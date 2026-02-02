@@ -1963,19 +1963,42 @@ if selected_names:
             if not u_df_raw.empty:
                 u_name = u_df_raw["name"].iloc[-1]
                 user_event_data = []
+                
                 for e_name in saved_names:
+                    # 分母：イベント一覧(df)からそのイベントの「総獲得ポイント」を正しく取得
+                    event_total_point = df[df["イベント名"] == e_name]["ポイント"].iloc[0]
+                    
                     event_match = u_df_raw[u_df_raw["対象イベント"] == e_name]
+                    
+                    point = event_match["point"].iloc[0] if not event_match.empty else 0
+                    rank = int(event_match["rank"].iloc[0]) if not event_match.empty else None
+                    
+                    # 支援割合の計算（分母は100位合算ではなくイベント全体の総計）
+                    # 支援割合は0.01(1%)形式で算出し、表示時に%変換します
+                    share = (point / event_total_point) if event_total_point > 0 else 0
+                    
                     user_event_data.append({
                         "イベント名": e_name,
-                        "貢献ポイント": event_match["point"].iloc[0] if not event_match.empty else 0,
-                        "順位": int(event_match["rank"].iloc[0]) if not event_match.empty else None
+                        "順位": rank,
+                        "支援ポイント": point,
+                        "支援割合": share
                     })
+                
                 u_df = pd.DataFrame(user_event_data)
 
                 st.write(f"### 👤 {u_name} さんの集計詳細")
-                st.dataframe(u_df, use_container_width=True, hide_index=True,
-                            column_config={"貢献ポイント": st.column_config.NumberColumn(format="%d"),
-                                           "順位": st.column_config.NumberColumn(format="%d 位")})
+                
+                st.dataframe(
+                    u_df, 
+                    use_container_width=True, 
+                    hide_index=True,
+                    column_config={
+                        "順位": st.column_config.NumberColumn("順位", format="%d 位"),
+                        "支援ポイント": st.column_config.NumberColumn("支援ポイント", format="%d"),
+                        "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%"),
+                        "イベント名": st.column_config.TextColumn("イベント名")
+                    }
+                )
 
                 import altair as alt
                 base = alt.Chart(u_df).encode(x=alt.X('イベント名:N', sort=saved_names, title='イベント名'))
