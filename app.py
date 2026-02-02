@@ -2024,35 +2024,40 @@ if selected_names:
                 
                 u_df['支援割合_label'] = u_df['支援割合'].map('{:.2f} %'.format)
                 
-                # 【修正箇所】axisパラメータを追加してラベルの見た目を整える
+                # 共通のツールチップ設定を定義しておくと管理が楽です
+                common_tooltip = [
+                    alt.Tooltip('イベント名:N'),
+                    alt.Tooltip('支援ポイント:Q', format=',', title='支援ポイント'), # タイトルを統一しカンマ区切りに
+                    alt.Tooltip('順位:Q'),
+                    alt.Tooltip('支援割合_label:N', title='支援割合')
+                ]
+                
                 base = alt.Chart(u_df).encode(
                     x=alt.X(
                         'イベント名:N', 
                         sort=saved_names[::-1], 
                         title='イベント名',
                         axis=alt.Axis(
-                            labelAngle=45,     # ラベルを45度斜めにする
-                            labelLimit=150,     # ラベルの最大幅（ピクセル）を指定し、超える場合は「...」にする
-                            labelFontSize=11    # 文字サイズを少し調整（お好みで）
+                            labelAngle=45, 
+                            labelLimit=150, 
+                            labelFontSize=11
                         )
                     )
                 )
                 
+                # 1. 棒グラフ側にも同じtooltipを設定
                 bar = base.mark_bar(color='#5271FF', opacity=0.6).encode(
-                    y=alt.Y('支援ポイント:Q', title='支援ポイント（棒）')
+                    y=alt.Y('支援ポイント:Q', title='支援ポイント（棒）'),
+                    tooltip=common_tooltip
                 )
                 
+                # 2. 折れ線側も共通設定を使用
                 line = base.mark_line(color='#FF4B4B', point=True).encode(
                     y=alt.Y('順位:Q', title='順位（線：1位が上）', scale=alt.Scale(reverse=True)),
-                    tooltip=[
-                        alt.Tooltip('イベント名:N'),
-                        alt.Tooltip('支援ポイント:Q', format=','),
-                        alt.Tooltip('順位:Q'),
-                        alt.Tooltip('支援割合_label:N', title='支援割合')
-                    ]
+                    tooltip=common_tooltip
                 )
                 
                 st.altair_chart(
-                    alt.layer(bar, line).resolve_scale(y='independent').properties(width='container', height=450), # 高さを少し上げるとより見やすいです
+                    alt.layer(bar, line).resolve_scale(y='independent').properties(width='container', height=450),
                     use_container_width=True
                 )
