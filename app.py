@@ -1965,15 +1965,21 @@ if selected_names:
                 user_event_data = []
                 
                 for e_name in saved_names:
-                    # 分母：イベント一覧(df)から数値として取得（エラー防止）
-                    raw_val = df[df["イベント名"] == e_name]["ポイント"].iloc[0]
-                    event_total_point = float(str(raw_val).replace(',', '')) if raw_val else 0
+                    # 分母：イベント一覧(df)から取得（カンマ除去を徹底）
+                    target_event_row = df[df["イベント名"] == e_name]
+                    if not target_event_row.empty:
+                        raw_val = target_event_row["ポイント"].iloc[0]
+                        # 確実に数値化（カンマを除去してfloatへ）
+                        event_total_point = float(str(raw_val).replace(',', ''))
+                    else:
+                        event_total_point = 0
                     
                     event_match = u_df_raw[u_df_raw["対象イベント"] == e_name]
                     p_val = event_match["point"].iloc[0] if not event_match.empty else 0
                     r_val = int(event_match["rank"].iloc[0]) if not event_match.empty else None
                     
-                    # 支援割合の計算
+                    # 支援割合の計算（個人のポイント ÷ イベント総ポイント）
+                    # 例: 487523 / 1172301 = 0.4158...
                     share = (p_val / event_total_point) if event_total_point > 0 else 0
                     
                     user_event_data.append({
@@ -1986,6 +1992,8 @@ if selected_names:
                 u_df = pd.DataFrame(user_event_data)
 
                 st.write(f"### 👤 {u_name} さんの集計詳細")
+                
+                # 成績一覧表
                 st.dataframe(
                     u_df, 
                     use_container_width=True, 
@@ -1993,35 +2001,25 @@ if selected_names:
                     column_config={
                         "順位": st.column_config.NumberColumn("順位", format="%d 位"),
                         "支援ポイント": st.column_config.NumberColumn("支援ポイント", format="%d"),
+                        # format="%.2f %%" は「0.4158」を「41.58 %」として表示します
                         "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%"),
                         "イベント名": st.column_config.TextColumn("イベント名")
                     }
                 )
 
-                # --- グラフ部分の修正（カラム名を「支援ポイント」に合わせる） ---
+                # --- グラフ表示（ここもカラム名を同期） ---
                 import altair as alt
-                
-                # 軸の最小値・最大値を計算（グラフの表示崩れ防止）
-                base = alt.Chart(u_df).encode(
-                    x=alt.X('イベント名:N', sort=saved_names, title='イベント名')
-                )
-
-                # 棒グラフ：支援ポイント
+                base = alt.Chart(u_df).encode(x=alt.X('イベント名:N', sort=saved_names, title='イベント名'))
                 bar = base.mark_bar(color='#5271FF', opacity=0.6).encode(
                     y=alt.Y('支援ポイント:Q', title='支援ポイント（棒）')
                 )
-
-                # 線グラフ：順位（1位が上に来るように設定）
                 line = base.mark_line(color='#FF4B4B', point=True).encode(
                     y=alt.Y('順位:Q', title='順位（線：1位が上）', scale=alt.Scale(reverse=True)),
-                    tooltip=['イベント名', '支援ポイント', '順位', alt.Tooltip('支援割合:Q', format='.2%')]
+                    tooltip=[
+                        alt.Tooltip('イベント名:N'),
+                        alt.Tooltip('支援ポイント:Q', format=','),
+                        alt.Tooltip('順位:Q'),
+                        alt.Tooltip('支援割合:Q', format='.2%') # グラフ上も%表記に
+                    ]
                 )
-
-                chart = alt.layer(bar, line).resolve_scale(
-                    y='independent'
-                ).properties(
-                    width='container',
-                    height=400
-                )
-
-                st.altair_chart(chart, use_container_width=True)
+                st.altair_chart(alt.layer(bar, line).resolve_scale(y='independent').properties(width='container', height=400), use_container_width=True)
