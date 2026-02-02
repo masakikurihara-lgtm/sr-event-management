@@ -1928,7 +1928,44 @@ if selected_names:
             
             # 結果表示
             st.write("### 🏆 合算貢献ランキング (TOP 100)")
-            st.dataframe(summary_df.head(100), use_container_width=True, hide_index=True)
+            # 表示用の設定（st.dataframeの中身をリッチにする）
+            st.dataframe(
+                summary_df.head(100),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "ランキング": st.column_config.NumberColumn(
+                        "位", 
+                        width="small",  # 幅を狭くする
+                        format="%d",    # 整数表示
+                    ),
+                    "ユーザー名": st.column_config.TextColumn(
+                        "ユーザー名",
+                        width="large",  # 名前は長く表示
+                    ),
+                    "合計ポイント": st.column_config.TextColumn(
+                        "合計ポイント",
+                        width="medium",
+                    ),
+                    "入賞時平均ポイント": st.column_config.TextColumn(
+                        "入賞時平均ポイント",
+                        width="medium",
+                    ),
+                    "入賞時平均順位": st.column_config.TextColumn(
+                        "入賞時平均順位",
+                        width="small",
+                    ),
+                    "100位入賞回数": st.column_config.NumberColumn(
+                        "入賞回数",
+                        width="small",
+                        format="%d 回",
+                    ),
+                    "ユーザーID": st.column_config.TextColumn(
+                        "ユーザーID",
+                        width="medium",
+                    ),
+                }
+            )
             
             # CSVダウンロード
             res_csv = summary_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
