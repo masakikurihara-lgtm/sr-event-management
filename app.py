@@ -2024,8 +2024,14 @@ if selected_names:
             else:
                 alert_data = []
                 
+                # --- 追加：ユーザーIDと総合順位の対応辞書を作成 ---
+                rank_map = summary_df.set_index("ユーザーID")["ランキング"].to_dict()
+                
                 # ユーザーごとにイベント時系列順でループ
                 for uid, group in c_df.groupby("user_id"):
+                    # 総合順位を取得（念のため存在しない場合は "-"）
+                    total_rank = rank_map.get(uid, "-")
+                    
                     # 選択されたイベント順にソート
                     group['ev_order'] = group['対象イベント'].apply(lambda x: ev_list.index(x) if x in ev_list else 999)
                     group = group.sort_values('ev_order')
@@ -2039,9 +2045,10 @@ if selected_names:
                         curr_r = curr_row["rank"]
                         diff = curr_r - prev_r
                         
-                        # ケースA: 大幅下落（前回一桁 -> 今回 大幅ダウン）
+                        # ケースA: 大幅下落
                         if prev_r <= base_rank_limit and diff >= diff_threshold:
                             alert_data.append({
+                                "順位": total_rank,  # ← 【追加】
                                 "ユーザー名": prev_row["name"],
                                 "種別": "🔻大幅下落",
                                 "イベント（前）": prev_row["対象イベント"],
@@ -2052,9 +2059,10 @@ if selected_names:
                                 "ユーザーID": uid
                             })
                         
-                        # ケースB: 大幅上昇（今回一桁 <- 前回 大幅ダウン状態）
+                        # ケースB: 大幅上昇
                         elif curr_r <= base_rank_limit and diff <= -diff_threshold:
                             alert_data.append({
+                                "順位": total_rank,  # ← 【追加】
                                 "ユーザー名": curr_row["name"],
                                 "種別": "🚀大幅上昇",
                                 "イベント（前）": prev_row["対象イベント"],
@@ -2068,6 +2076,10 @@ if selected_names:
                 if alert_data:
                     alert_df = pd.DataFrame(alert_data)
                     
+                    # --- 追加：列の並び順を「順位」が一番左に来るように指定 ---
+                    display_cols = ["順位", "ユーザー名", "種別", "イベント（前）", "順位（前）", "イベント（後）", "順位（後）", "変動幅", "ユーザーID"]
+                    alert_df = alert_df[display_cols]
+
                     # 表示設定
                     def highlight_diff(val):
                         color = '#ff9999' if "下落" in str(val) else '#99ff99'
@@ -2078,6 +2090,7 @@ if selected_names:
                         use_container_width=True,
                         hide_index=True,
                         column_config={
+                            "順位": st.column_config.NumberColumn("順位", width="small", format="%d 位"), # ← 【追加】
                             "ユーザー名": st.column_config.TextColumn("ユーザー名", width="medium"),
                             "種別": st.column_config.TextColumn("種別", width="medium"),
                             "変動幅": st.column_config.TextColumn("変動詳細", width="medium"),
