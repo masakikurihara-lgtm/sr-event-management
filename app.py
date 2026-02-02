@@ -1897,114 +1897,80 @@ if selected_names:
         if all_data:
             combined_df = pd.concat(all_data, ignore_index=True)
             
-            # ②・③・④ 各項目の集計
+            # --- 1. 集計・ソート (既存ロジックを維持) ---
             summary_df = combined_df.groupby("user_id").agg({
                 "name": "last",
-                "point": ["sum", "mean"], # 合計と平均（入賞時）
-                "rank": "mean",           # 平均順位（入賞時）
-                "user_id": "count"        # 入賞回数
+                "point": ["sum", "mean"],
+                "rank": "mean",
+                "user_id": "count"
             })
-
-            # カラム名の整理
             summary_df.columns = ["ユーザー名", "合計ポイント", "入賞時平均ポイント", "入賞時平均順位", "100位入賞回数"]
             summary_df.index.name = "ユーザーID"
-
-            # ① ランキング（順位）の計算（同じポイントなら同順位：min方式）
             summary_df["ランキング"] = summary_df["合計ポイント"].rank(ascending=False, method='min').astype(int)
-
-            # 項目の並び替え（ランキングを先頭、ユーザーIDを保持）
             summary_df = summary_df.reset_index()
             cols = ["ランキング", "ユーザー名", "合計ポイント", "入賞時平均ポイント", "入賞時平均順位", "100位入賞回数", "ユーザーID"]
-            summary_df = summary_df[cols]
+            summary_df = summary_df[cols].sort_values("ランキング")
 
-            # 合計ポイント順にソート
-            summary_df = summary_df.sort_values("ランキング")
-
-            # =========================================================
-            # 📈 【ここに追加】グラフ分析セクション (整形前に行う)
-            # =========================================================
-            st.write("---")
-            st.subheader("📈 貢献推移・配分分析")
-
-            # TOP5ユーザーのIDを取得 (数値データの状態で抽出)
-            top5_ids = summary_df.head(5)["ユーザーID"].tolist()
-            top5_names = summary_df.head(5)["ユーザー名"].tolist()
-            
-            # TOP5に絞った推移用データ
-            plot_df = combined_df[combined_df["user_id"].isin(top5_ids)].copy()
-            
-            # 折れ線グラフ用のピボットテーブル作成
-            # インデックスを「対象イベント」、カラムを「ユーザー名」にしてポイントを集計
-            line_data = plot_df.pivot_table(
-                index="対象イベント", 
-                columns="name", 
-                values="point", 
-                aggfunc="sum"
-            ).fillna(0)
-            
-            # イベントの並び順を、選択した順序に固定（時系列を維持するため）
-            line_data = line_data.reindex(selected_names)
-
-            st.write("#### 🏆 TOP5ユーザーのポイント推移")
-            st.line_chart(line_data)
-
-            st.write("#### 📦 イベントごとの貢献配分（上位5名）")
-            st.bar_chart(line_data)
-            
-            st.write("---") # グラフと表の区切り
-            # =========================================================
-
-            # 表示用の整形（カンマ区切りと小数点）
-            summary_df["合計ポイント"] = summary_df["合計ポイント"].map('{:,}'.format)
-            summary_df["入賞時平均ポイント"] = summary_df["入賞時平均ポイント"].map('{:,.1f}'.format)
-            summary_df["入賞時平均順位"] = summary_df["入賞時平均順位"].map('{:.1f}'.format)
-
+            # --- 2. 【改善】先に「表」を表示する ---
             st.success(f"集計完了: {len(selected_names)} 件のイベントを合算しました。")
-            
-            # 結果表示
             st.write("### 🏆 合算貢献ランキング (TOP 100)")
-            # 表示用の設定（st.dataframeの中身をリッチにする）
+            
+            # 表示用のコピー（カンマ付与）
+            summary_df_display = summary_df.copy()
+            summary_df_display["合計ポイント"] = summary_df_display["合計ポイント"].map('{:,}'.format)
+            summary_df_display["入賞時平均ポイント"] = summary_df_display["入賞時平均ポイント"].map('{:,.1f}'.format)
+            summary_df_display["入賞時平均順位"] = summary_df_display["入賞時平均順位"].map('{:.1f}'.format)
+
             st.dataframe(
-                summary_df.head(100),
+                summary_df_display.head(100),
                 use_container_width=True,
                 hide_index=True,
                 column_config={
-                    "ランキング": st.column_config.NumberColumn(
-                        "順位", 
-                        width="small",  # 幅を狭くする
-                        format="%d",    # 整数表示
-                    ),
-                    "ユーザー名": st.column_config.TextColumn(
-                        "ユーザー名",
-                        width="large",  # 名前は長く表示
-                    ),
-                    "合計ポイント": st.column_config.NumberColumn(
-                        "合計ポイント",
-                        width="medium",
-                    ),
-                    "入賞時平均ポイント": st.column_config.NumberColumn(
-                        "入賞時平均ポイント",
-                        width="medium",
-                    ),
-                    "入賞時平均順位": st.column_config.NumberColumn(
-                        "入賞時平均順位",
-                        width="medium",
-                    ),
-                    "100位入賞回数": st.column_config.NumberColumn(
-                        "100位入賞回数",
-                        width="medium",
-                        # format="%d 回",
-                        format="%d",
-                    ),
-                    "ユーザーID": st.column_config.TextColumn(
-                        "ユーザーID",
-                        width="medium",
-                    ),
+                    "ランキング": st.column_config.NumberColumn("順位", width="small"),
+                    "合計ポイント": st.column_config.TextColumn("合計ポイント", width="medium"),
                 }
             )
             
-            # CSVダウンロード
+            # CSVボタンは表の直後に配置
             res_csv = summary_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
             st.download_button("集計結果をCSVで保存", data=res_csv, file_name="combined_contribution.csv")
+
+            # --- 3. 【改善】グラフ分析セクションを下に配置 ---
+            st.write("---")
+            st.subheader("📊 貢献推移・配分分析 (TOP5)")
+
+            # TOP5をランキング順で取得
+            top5_users = summary_df.head(5)
+            top5_ids = top5_users["ユーザーID"].tolist()
+            top5_names_ordered = top5_users["ユーザー名"].tolist() # 1位〜5位の名前順
+            
+            plot_df = combined_df[combined_df["user_id"].isin(top5_ids)].copy()
+            
+            try:
+                # ピボット作成
+                line_data = plot_df.pivot_table(
+                    index="対象イベント", 
+                    columns="name", 
+                    values="point", 
+                    aggfunc="sum"
+                ).fillna(0)
+                
+                # 【改善】列をランキング順(1位〜5位)に固定、行を選んだイベント順に固定
+                line_data = line_data.reindex(columns=top5_names_ordered).reindex(selected_names)
+
+                tab1, tab2 = st.tabs(["📈 ポイント推移", "📊 貢献配分"])
+                
+                with tab1:
+                    st.write("##### 1位〜5位のイベント別ポイント推移")
+                    st.line_chart(line_data)
+
+                with tab2:
+                    st.write("##### イベントごとの貢献比率 (積上げ)")
+                    # 積み上げ棒グラフ
+                    st.bar_chart(line_data)
+                    
+            except Exception:
+                st.info("グラフを表示するためのイベント情報が不足しています。")
+
         else:
             st.error("ランキングデータを取得できませんでした。")
