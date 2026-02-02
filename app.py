@@ -1987,30 +1987,26 @@ if selected_names:
                     r_val = int(event_match["rank"].iloc[0]) if not event_match.empty else None
                     share_pct = (p_val / event_total_point * 100) if event_total_point > 0 else 0
                     
-                    # ご指示通りの表記（正確なフルポイント）
+                    # 指示通りの表記: 「2位 / 356,257 / L2」
                     total_info = f"{event_total_rank}位 / {event_total_point:,.0f} / L{event_level}"
                     
+                    # 配置：イベント名 -> 全体実績（small） -> 個人データ（太字・色）
                     user_event_data.append({
                         "イベント名": e_name,
+                        "全体(順位 / pts / Lv)": total_info, 
                         "順位": r_val,
                         "支援ポイント": p_val,
-                        "支援割合": share_pct,
-                        "全体(順位 / pts / Lv)": total_info
+                        "支援割合": share_pct
                     })
                 
                 u_df = pd.DataFrame(user_event_data)
                 u_df['イベント名'] = pd.Categorical(u_df['イベント名'], categories=saved_names, ordered=True)
                 u_df = u_df.sort_values('イベント名')
 
-                # --- スタイル設定 ---
-                # 個人列：太字(900) + ハイライト
-                # 全体列（最後の列）：テキストを右寄せに強制
+                # 個人実績（右3列）を太字(900)＋背景ハイライト
                 styled_df = u_df.style.map(
                     lambda x: 'background-color: #f1f3f6; font-weight: 900; color: #000000;', 
                     subset=['順位', '支援ポイント', '支援割合']
-                ).set_properties(
-                    subset=['全体(順位 / pts / Lv)'], 
-                    **{'text-align': 'right'}
                 )
 
                 st.write(f"###### 👤 {u_name} さんの集計詳細")
@@ -2021,13 +2017,10 @@ if selected_names:
                     hide_index=True,
                     column_config={
                         "イベント名": st.column_config.TextColumn("イベント名", width="large"),
+                        "全体(順位 / pts / Lv)": st.column_config.TextColumn("全体(順位 / pts / Lv)", width="small"),
                         "順位": st.column_config.NumberColumn("順位", format="%d 位", width="small"),
                         "支援ポイント": st.column_config.NumberColumn("支援ポイント", format="%d", width="small"),
-                        "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%", width="small"),
-                        "全体(順位 / pts / Lv)": st.column_config.TextColumn(
-                            "全体(順位 / pts / Lv)", 
-                            width="small"
-                        )
+                        "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%", width="small")
                     }
                 )
 
