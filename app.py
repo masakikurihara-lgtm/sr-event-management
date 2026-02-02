@@ -1992,17 +1992,19 @@ if selected_names:
                         "順位": r_val,
                         "支援ポイント": p_val,
                         "支援割合": share_pct,
-                        # 最後の列に正確な情報をすべてまとめる
-                        "全体(順位/ポイント/Lv)": f"{event_total_rank} / {event_total_point:,.0f} pts / Lv.{event_level}"
+                        # 全体情報は末尾に配置
+                        "全体(順位/pts/Lv)": f"{event_total_rank} / {event_total_point:,.0f} / L{event_level}"
                     })
                 
                 u_df = pd.DataFrame(user_event_data)
                 u_df['イベント名'] = pd.Categorical(u_df['イベント名'], categories=saved_names, ordered=True)
                 u_df = u_df.sort_values('イベント名')
 
-                # --- ハイライト設定：個人の実績列（順位・支援ポイント・支援割合）を薄く色付け ---
-                # background-color: #f0f2f6 はStreamlit標準の薄いグレー/ブルー系です
-                styled_df = u_df.style.map(lambda x: 'background-color: #f0f2f6', subset=['順位', '支援ポイント', '支援割合'])
+                # --- スタイル設定：個人実績列（左3列）を「太字」＋「薄いハイライト」 ---
+                styled_df = u_df.style.map(
+                    lambda x: 'background-color: #f8f9fb; font-weight: bold; color: #1f1f1f;', 
+                    subset=['順位', '支援ポイント', '支援割合']
+                )
 
                 st.write(f"###### 👤 {u_name} さんの集計詳細")
                 
@@ -2011,11 +2013,16 @@ if selected_names:
                     use_container_width=True, 
                     hide_index=True,
                     column_config={
-                        "イベント名": st.column_config.TextColumn("イベント名", width="large"),
-                        "順位": st.column_config.NumberColumn("順位", format="%d 位"),
-                        "支援ポイント": st.column_config.NumberColumn("支援ポイント", format="%d"),
-                        "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%"),
-                        "全体(順位/ポイント/Lv)": st.column_config.TextColumn("全体(順位/pts/Lv)", width="medium")
+                        # イベント名を「large」よりさらに広い「1000」などのピクセル指定にして圧迫を防ぐ
+                        "イベント名": st.column_config.TextColumn("イベント名", width=450),
+                        "順位": st.column_config.NumberColumn("順位", format="%d 位", width=80),
+                        "支援ポイント": st.column_config.NumberColumn("支援ポイント", format="%d", width=100),
+                        "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%", width=100),
+                        # 全体情報を最小限の幅にして、内容を右寄せ(TextColumnの標準仕様)に
+                        "全体(順位/pts/Lv)": st.column_config.TextColumn(
+                            "全体(順位/pts/Lv)", 
+                            width=180
+                        )
                     }
                 )
 
