@@ -1993,11 +1993,8 @@ if selected_names:
                 
                 u_df = pd.DataFrame(user_event_data)
 
-                # 右側を最新にするため、保存順(降順)を反転
-                display_order = saved_names[::-1] 
-
                 # 表の並び順を更新
-                u_df['イベント名'] = pd.Categorical(u_df['イベント名'], categories=display_order, ordered=True)
+                u_df['イベント名'] = pd.Categorical(u_df['イベント名'], categories=saved_names, ordered=True)
                 u_df = u_df.sort_values('イベント名')
 
                 st.write(f"### 👤 {u_name} さんの集計詳細")
@@ -2026,7 +2023,7 @@ if selected_names:
                 base = alt.Chart(u_df).encode(
                     x=alt.X(
                         'イベント名:N', 
-                        sort=display_order, 
+                        sort=saved_names[::-1], 
                         title='イベント名',
                         axis=alt.Axis(
                             labelAngle=45,     # ラベルを45度斜めにする
