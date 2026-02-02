@@ -2018,7 +2018,7 @@ if selected_names:
                     column_config={
                         "イベント名": st.column_config.TextColumn("イベント名", width="large"),
                         "全体(順位 / pts / Lv)": st.column_config.TextColumn("全体(順位 / pts / Lv)", width="small"),
-                        "順位": st.column_config.NumberColumn("順位", format="%d 位", width="small"),
+                        "順位": st.column_config.NumberColumn("貢献ランク", format="%d 位", width="small"),
                         "支援ポイント": st.column_config.NumberColumn("支援ポイント", format="%d", width="small"),
                         "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%", width="small")
                     }
