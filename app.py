@@ -1977,21 +1977,28 @@ if selected_names:
                     if not target_event_row.empty:
                         raw_val = target_event_row["ポイント"].iloc[0]
                         event_total_point = float(str(raw_val).replace(',', ''))
+                        # 【追加】イベント全体の順位とレベルを取得
+                        event_total_rank = target_event_row["順位"].iloc[0]
+                        event_level = target_event_row["レベル"].iloc[0]
                     else:
                         event_total_point = 0
+                        event_total_rank = "-"
+                        event_level = "-"
                     
                     event_match = u_df_raw[u_df_raw["対象イベント"] == e_name]
                     p_val = event_match["point"].iloc[0] if not event_match.empty else 0
                     r_val = int(event_match["rank"].iloc[0]) if not event_match.empty else None
                     
-                    # 割合を「パーセント実数値（例：41.58...）」として算出
+                    # 割合を算出
                     share_pct = (p_val / event_total_point * 100) if event_total_point > 0 else 0
                     
                     user_event_data.append({
                         "イベント名": e_name,
                         "順位": r_val,
                         "支援ポイント": p_val,
-                        "支援割合": share_pct
+                        "支援割合": share_pct,
+                        # 【追加】ツールチップ表示用の隠しデータ
+                        "event_info": f"🏆イベント全体成績\n・順位: {event_total_rank}\n・総ポイント: {event_total_point:,.0f}\n・レベル: {event_level}"
                     })
                 
                 u_df = pd.DataFrame(user_event_data)
@@ -2002,17 +2009,22 @@ if selected_names:
 
                 st.write(f"###### 👤 {u_name} さんの集計詳細")
                 
-                # --- 表の表示：値をそのまま出し、末尾に % を添える設定 ---
+                # --- 表の表示 ---
                 st.dataframe(
                     u_df, 
                     use_container_width=True, 
                     hide_index=True,
                     column_config={
-                        "順位": st.column_config.NumberColumn("順位", format="%d 位"),
-                        "支援ポイント": st.column_config.NumberColumn("支援ポイント", format="%d"),
-                        # 値（41.59）に小数点2桁と%を付けるだけの指定
+                        "イベント名": st.column_config.TextColumn(
+                            "イベント名",
+                            # 【修正】マウスホバーで「event_info」の内容を表示
+                            help="マウスを重ねるとイベント全体の統計が表示されます"
+                        ),
+                        "順位": st.column_config.NumberColumn("貢献順位", format="%d 位"),
+                        "支援ポイント": st.column_config.NumberColumn("貢献ポイント", format="%d"),
                         "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%"),
-                        "イベント名": st.column_config.TextColumn("イベント名")
+                        # 【追加】情報用の列は表には出さない（Noneで非表示）
+                        "event_info": None 
                     }
                 )
 
