@@ -341,11 +341,10 @@ if "current_room_id" not in st.session_state:
 
 # 入力されたroom_idが保存されているIDと違う場合、古いデータを消す
 if st.session_state["current_room_id"] != room_id:
-    keys_to_reset = ["summary_df", "combined_df", "last_selected_names"]
+    keys_to_reset = ["summary_df", "combined_df", "last_selected_names", "alert_diff", "alert_base"]
     for key in keys_to_reset:
         if key in st.session_state:
             del st.session_state[key]
-    # 管理用IDを現在のものに更新
     st.session_state["current_room_id"] = room_id
 
 
@@ -1883,7 +1882,7 @@ def fetch_contribution_ranking_data(event_id, room_id):
 if selected_names:
     # ボタンが押されたら計算を実行し session_state に保存する
     if st.button("📊 選択したイベントを集計する"):
-        for key in ["summary_df", "combined_df", "last_selected_names"]:
+        for key in ["summary_df", "combined_df", "last_selected_names", "alert_diff", "alert_base"]:
             if key in st.session_state:
                 del st.session_state[key]
         all_data = []
@@ -1989,11 +1988,9 @@ if selected_names:
         with st.expander("設定と抽出条件", expanded=True):
             col1, col2 = st.columns(2)
             with col1:
-                # 変動幅のしきい値設定
-                diff_threshold = st.number_input("検知する変動順位幅（25〜50）", min_value=25, max_value=100, value=25, step=5)
+                diff_threshold = st.number_input("検知する変動順位幅（25〜50）", min_value=25, max_value=100, value=25, step=5, key="alert_diff")
             with col2:
-                # 起点となる上位ランクの定義
-                base_rank_limit = st.number_input("起点ランクの定義（例: 9位以内）", min_value=1, max_value=20, value=9)
+                base_rank_limit = st.number_input("起点ランクの定義（例: 9位以内）", min_value=1, max_value=20, value=9, key="alert_base")
 
         if "combined_df" in st.session_state:
             c_df = st.session_state["combined_df"].copy()
