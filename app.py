@@ -1965,16 +1965,20 @@ if selected_names:
                 user_event_data = []
                 
                 for e_name in saved_names:
-                    # 分母：イベント一覧(df)からそのイベントの「総獲得ポイント」を正しく取得
-                    event_total_point = df[df["イベント名"] == e_name]["ポイント"].iloc[0]
+                    # --- 修正箇所: 文字列(カンマ入り)を数値に変換して取得 ---
+                    raw_point = df[df["イベント名"] == e_name]["ポイント"].iloc[0]
+                    if isinstance(raw_point, str):
+                        event_total_point = float(raw_point.replace(',', ''))
+                    else:
+                        event_total_point = float(raw_point)
                     
                     event_match = u_df_raw[u_df_raw["対象イベント"] == e_name]
                     
                     point = event_match["point"].iloc[0] if not event_match.empty else 0
                     rank = int(event_match["rank"].iloc[0]) if not event_match.empty else None
                     
-                    # 支援割合の計算（分母は100位合算ではなくイベント全体の総計）
-                    # 支援割合は0.01(1%)形式で算出し、表示時に%変換します
+                    # 支援割合の計算（分母を数値化したのでエラーになりません）
+                    # 小数で計算し、column_configで % 表示させます
                     share = (point / event_total_point) if event_total_point > 0 else 0
                     
                     user_event_data.append({
