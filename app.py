@@ -1963,7 +1963,7 @@ if selected_names:
                     ),
                     "ユーザーID": st.column_config.TextColumn(
                         "ユーザーID",
-                        width="small",
+                        width="medium",
                     ),
                 }
             )
