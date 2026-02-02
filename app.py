@@ -1992,9 +1992,22 @@ if selected_names:
         with st.expander("設定と抽出条件", expanded=True):
             col1, col2 = st.columns(2)
             with col1:
-                diff_threshold = st.number_input("検知する変動順位幅（25〜50）", min_value=25, max_value=100, value=25, step=5, key="alert_diff")
+                # diff_threshold = st.number_input("検知する変動順位幅（25〜50）", min_value=25, max_value=100, value=25, step=5, key="alert_diff")
+                diff_threshold = st.number_input(
+                    "検知する変動順位幅（25〜50）", 
+                    min_value=25, max_value=100, 
+                    value=st.session_state.get("alert_diff", 25),
+                    step=5, 
+                    key="alert_diff"
+                )
             with col2:
-                base_rank_limit = st.number_input("起点ランクの定義（例: 9位以内）", min_value=1, max_value=20, value=9, key="alert_base")
+                # base_rank_limit = st.number_input("起点ランクの定義（例: 9位以内）", min_value=1, max_value=20, value=9, key="alert_base")
+                base_rank_limit = st.number_input(
+                    "起点ランクの定義（例: 9位以内）", 
+                    min_value=1, max_value=20, 
+                    value=st.session_state.get("alert_base", 9),
+                    key="alert_base"
+                )
 
         if "combined_df" in st.session_state:
             c_df = st.session_state["combined_df"].copy()
