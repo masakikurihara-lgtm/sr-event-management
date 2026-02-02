@@ -1908,6 +1908,9 @@ if selected_names:
             cols = ["ランキング", "ユーザー名", "合計ポイント", "入賞時平均ポイント", "入賞時平均順位", "100位入賞回数", "ユーザーID"]
             summary_df = summary_df[cols].sort_values("ランキング")
 
+            master_event_list = df["イベント名"].tolist()
+            sorted_selected_names = [name for name in master_event_list if name in selected_names]
+
             # 結果をセッションに保存
             st.session_state["summary_df"] = summary_df
             st.session_state["combined_df"] = combined_df
@@ -1989,6 +1992,9 @@ if selected_names:
                     })
                 
                 u_df = pd.DataFrame(user_event_data)
+
+                u_df['イベント名'] = pd.Categorical(u_df['イベント名'], categories=saved_names, ordered=True)
+                u_df = u_df.sort_values('イベント名')
 
                 st.write(f"### 👤 {u_name} さんの集計詳細")
                 
