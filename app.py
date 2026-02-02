@@ -1897,7 +1897,7 @@ def reset_analysis_settings():
 
 # 3. 集計実行
 if selected_names:
-    if st.button("📊 選択したイベントを集計する", on_click=reset_analysis_settings):
+    if st.button("📊 選択したイベントを集計・分析する", on_click=reset_analysis_settings):
         
         all_data = []
         progress_text = st.empty()
