@@ -1980,13 +1980,20 @@ if selected_names:
             st.write("---")
             st.subheader("🔍 特定ユーザーの詳細分析")
             
-            user_list = summary_df["ユーザーID"].unique().tolist()
-            target_user_id = st.selectbox(
-                "詳細を確認したいユーザーIDを選択してください",
-                options=user_list
+            # --- 【修正】表示を「ユーザー名（ID）」の形式にする ---
+            # 選択肢用のラベルリストを作成
+            user_options = [f"{row['ユーザー名']} ({row['ユーザーID']})" for _, row in summary_df.iterrows()]
+            
+            selected_label = st.selectbox(
+                "詳細を確認したいユーザーを選択してください",
+                options=user_options,
+                help="集計対象のイベントに1回でも入賞したユーザーが対象です。"
             )
 
-            if target_user_id:
+            if selected_label:
+                # ラベルからユーザーIDを抽出（末尾のカッコ内の数値を取得）
+                target_user_id = selected_label.split("(")[-1].replace(")", "")
+                
                 # 該当ユーザーの生データを抽出
                 u_df_raw = combined_df[combined_df["user_id"] == target_user_id].copy()
                 u_name = u_df_raw["name"].iloc[-1]
@@ -1994,7 +2001,6 @@ if selected_names:
                 # --- 一覧表の作成 (選択したイベント順に並べ替え) ---
                 user_event_data = []
                 for e_name in selected_names:
-                    # 「対象イベント」列を使ってマッチング
                     event_match = u_df_raw[u_df_raw["対象イベント"] == e_name]
                     
                     if not event_match.empty:
@@ -2004,14 +2010,12 @@ if selected_names:
                             "順位": int(event_match["rank"].iloc[0])
                         })
                     else:
-                        # 100位圏外（データなし）の場合の補完
                         user_event_data.append({
                             "イベント名": e_name,
                             "貢献ポイント": 0,
                             "順位": None
                         })
                 
-                # グラフと共通で使うDataFrame
                 u_df = pd.DataFrame(user_event_data)
 
                 st.write(f"### 👤 {u_name} さんの集計詳細")
@@ -2033,24 +2037,21 @@ if selected_names:
                 
                 import altair as alt
 
-                # X軸は「イベント名」、ソート順は選択したイベントリストに従う
                 base = alt.Chart(u_df).encode(
                     x=alt.X('イベント名:N', sort=selected_names, title='イベント名')
                 )
 
-                # ポイント（棒グラフ）: 列名を「貢献ポイント」に合わせる
+                # ポイント（棒グラフ）
                 bar = base.mark_bar(color='#5271FF', opacity=0.6).encode(
                     y=alt.Y('貢献ポイント:Q', title='支援ポイント（棒）')
                 )
 
-                # 順位（折れ線グラフ）: 列名を「順位」に合わせる
-                # 順位は1位が一番上に来るように reverse=True を設定
+                # 順位（折れ線グラフ）
                 line = base.mark_line(color='#FF4B4B', point=True).encode(
                     y=alt.Y('順位:Q', title='順位（線：1位が上）', scale=alt.Scale(reverse=True)),
                     tooltip=['イベント名', '貢献ポイント', '順位']
                 )
 
-                # 独立したY軸（resolve_scale）で重ね合わせ
                 layered_chart = alt.layer(bar, line).resolve_scale(
                     y='independent'
                 ).properties(
