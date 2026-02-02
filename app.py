@@ -1894,11 +1894,7 @@ if selected_names:
         bar.empty()
         progress_text.empty()
 
-        if all_data or "keep_summary" in st.session_state:
-            if "keep_summary" in st.session_state:
-                summary_df = st.session_state["keep_summary"]
-                combined_df = st.session_state["keep_combined"]
-                selected_names = st.session_state["keep_names"]
+        if all_data:
             combined_df = pd.concat(all_data, ignore_index=True)
             
             # ②・③・④ 各項目の集計
@@ -1930,10 +1926,6 @@ if selected_names:
             summary_df["入賞時平均順位"] = summary_df["入賞時平均順位"].map('{:.1f}'.format)
 
             st.success(f"集計完了: {len(selected_names)} 件のイベントを合算しました。")
-
-            st.session_state["keep_summary"] = summary_df
-            st.session_state["keep_combined"] = combined_df
-            st.session_state["keep_names"] = selected_names
             
             # 結果表示
             st.write("### 🏆 合算貢献ランキング (TOP 100)")
@@ -1980,98 +1972,6 @@ if selected_names:
             # CSVダウンロード
             res_csv = summary_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
             st.download_button("集計結果をCSVで保存", data=res_csv, file_name="combined_contribution.csv")
-
-
-            # =========================================================
-            # 🔍 追加機能: 特定ユーザーの詳細分析（一覧表 ＋ 2軸推移グラフ）
-            # =========================================================
-            st.write("---")
-            st.subheader("🔍 特定ユーザーの詳細分析")
-            
-            # IDをキー、表示ラベル（名前+ID）を値にした辞書を作成
-            # これにより、選択肢から直接正しいIDを逆引きできます
-            user_map = {
-                str(row['ユーザーID']): f"{row['ユーザー名']} ({row['ユーザーID']})" 
-                for _, row in summary_df.iterrows()
-            }
-            
-            # 選択肢には「名前 (ID)」を表示し、indexにはIDを保持する
-            target_user_id = st.selectbox(
-                "詳細を確認したいユーザーを選択してください",
-                options=list(user_map.keys()),
-                format_func=lambda x: user_map[x],
-                help="集計対象のイベントに1回でも入賞したユーザーが対象です。"
-            )
-
-            if target_user_id:
-                # 該当ユーザーの生データを抽出（型を文字列に揃えて比較）
-                u_df_raw = combined_df[combined_df["user_id"].astype(str) == target_user_id].copy()
-                
-                if not u_df_raw.empty:
-                    u_name = u_df_raw["name"].iloc[-1]
-                    
-                    # --- 一覧表の作成 ---
-                    user_event_data = []
-                    for e_name in selected_names:
-                        event_match = u_df_raw[u_df_raw["対象イベント"] == e_name]
-                        
-                        if not event_match.empty:
-                            user_event_data.append({
-                                "イベント名": e_name,
-                                "貢献ポイント": event_match["point"].iloc[0],
-                                "順位": int(event_match["rank"].iloc[0])
-                            })
-                        else:
-                            user_event_data.append({
-                                "イベント名": e_name,
-                                "貢献ポイント": 0,
-                                "順位": None
-                            })
-                    
-                    u_df = pd.DataFrame(user_event_data)
-
-                    st.write(f"### 👤 {u_name} さんの集計詳細")
-
-                    # 1. 一覧表を表示
-                    st.write("##### 📝 イベント別成績一覧")
-                    st.dataframe(
-                        u_df,
-                        use_container_width=True,
-                        hide_index=True,
-                        column_config={
-                            "貢献ポイント": st.column_config.NumberColumn(format="%d"),
-                            "順位": st.column_config.NumberColumn(format="%d 位")
-                        }
-                    )
-
-                    # 2. グラフを表示 (Altair)
-                    st.write("##### 📈 貢献ポイントと順位の推移")
-                    
-                    import altair as alt
-
-                    base = alt.Chart(u_df).encode(
-                        x=alt.X('イベント名:N', sort=selected_names, title='イベント名')
-                    )
-
-                    bar = base.mark_bar(color='#5271FF', opacity=0.6).encode(
-                        y=alt.Y('貢献ポイント:Q', title='支援ポイント（棒）')
-                    )
-
-                    line = base.mark_line(color='#FF4B4B', point=True).encode(
-                        y=alt.Y('順位:Q', title='順位（線：1位が上）', scale=alt.Scale(reverse=True)),
-                        tooltip=['イベント名', '貢献ポイント', '順位']
-                    )
-
-                    layered_chart = alt.layer(bar, line).resolve_scale(
-                        y='independent'
-                    ).properties(
-                        width='container',
-                        height=400
-                    )
-
-                    st.altair_chart(layered_chart, use_container_width=True)
-                else:
-                    st.warning("選択されたユーザーのデータが見つかりませんでした。")
 
         else:
             st.error("ランキングデータを取得できませんでした。")
