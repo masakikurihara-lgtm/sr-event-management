@@ -1992,6 +1992,7 @@ if selected_names:
                     })
                 
                 u_df = pd.DataFrame(user_event_data)
+                u_df['支援割合_label'] = u_df['支援割合'].map('{:.2f} %'.format)
 
                 # 表の並び順を更新
                 u_df['イベント名'] = pd.Categorical(u_df['イベント名'], categories=saved_names, ordered=True)
@@ -2043,7 +2044,7 @@ if selected_names:
                         alt.Tooltip('イベント名:N'),
                         alt.Tooltip('支援ポイント:Q', format=','),
                         alt.Tooltip('順位:Q'),
-                        alt.Tooltip('支援割合:N', title='支援割合')
+                        alt.Tooltip('支援割合_label:N', title='支援割合')
                     ]
                 )
                 
