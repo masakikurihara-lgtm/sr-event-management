@@ -1950,9 +1950,8 @@ if selected_names:
                 "ランキング": st.column_config.NumberColumn("順位", width="small", format="%d 位"),
                 "ユーザー名": st.column_config.TextColumn("ユーザー名", width="large"),
                 "合計ポイント": st.column_config.NumberColumn("合計支援ポイント", width="medium", format="%d"),
-                "入賞時平均ポイント": st.column_config.NumberColumn("入賞時平均ポイント", width="medium", format="%.1f"),
-                "入賞時平均順位": st.column_config.NumberColumn("入賞時平均順位", width="medium", format="%.1f"),
-                # 【追加】100位の前に25位を配置。幅は100位と同様 medium
+                "入賞時平均ポイント": st.column_config.NumberColumn("100位内時平均ポイント", width="medium", format="%.1f"),
+                "入賞時平均順位": st.column_config.NumberColumn("100位内時平均順位", width="medium", format="%.1f"),
                 "25位入賞回数": st.column_config.NumberColumn("25位内数", width="small", format="%d"),
                 "100位入賞回数": st.column_config.NumberColumn("100位内数", width="small", format="%d"),
                 "ユーザーID": st.column_config.NumberColumn("ユーザーID", width="medium"),
