@@ -1845,17 +1845,15 @@ else:
 st.write("---")
 st.subheader("📊 選択イベントの貢献度集計・分析")
 
-# 1. 既存の df_show から選択肢を作成
-# 選択を容易にするため「イベント名」を表示し、内部的に「event_id」を紐付ける
+# 1. 選択肢の作成
 event_options = df_show["イベント名"].tolist()
 selected_names = st.multiselect(
     "分析対象のイベントを複数選択してください（最大5件程度を推奨）",
     options=event_options,
-    help="選択したイベントの貢献100位までのデータを合算します。"
+    help="選択したイベントの貢献100位までのデータを合算・分析します。"
 )
 
-# 2. 貢献データを取得する関数（新規追加）
-@st.cache_data(ttl=3600) # 1時間はキャッシュを保持
+@st.cache_data(ttl=3600)
 def fetch_contribution_ranking_data(event_id, room_id):
     api_url = f"https://www.showroom-live.com/api/event/contribution_ranking?event_id={event_id}&room_id={room_id}"
     try:
@@ -1863,19 +1861,17 @@ def fetch_contribution_ranking_data(event_id, room_id):
         r.raise_for_status()
         data = r.json()
         return data.get("ranking", [])
-    except Exception as e:
+    except Exception:
         return []
 
-# 3. 集計実行ボタン
+# 3. 集計実行
 if selected_names:
     if st.button("📊 選択したイベントを集計する"):
         all_data = []
         progress_text = st.empty()
         bar = st.progress(0)
         
-        # 選択されたイベント名から event_id を逆引きしてAPIを叩く
         for i, name in enumerate(selected_names):
-            # 既存のdfから対応するevent_idを取得
             target_row = df[df["イベント名"] == name].iloc[0]
             eid = target_row["event_id"]
             
@@ -1884,44 +1880,58 @@ if selected_names:
             
             if ranking:
                 temp_df = pd.DataFrame(ranking)
-                temp_df["対象イベント"] = name
+                # ⑤ 退会ユーザー名の置換処理（Unsubscribed User または 退会済みユーザー を強調）
+                # JSON上の表記揺れに対応するため str.contains を使用
+                temp_df['name'] = temp_df['name'].apply(
+                    lambda x: "！！退会済みユーザー！！" if "Unsubscribed User" in str(x) or "退会済みユーザー" in str(x) else x
+                )
                 all_data.append(temp_df)
             
             bar.progress((i + 1) / len(selected_names))
-            time.sleep(0.2) # 負荷軽減
+            time.sleep(0.1)
         
         bar.empty()
         progress_text.empty()
 
         if all_data:
-            # 全データを1つに結合
             combined_df = pd.concat(all_data, ignore_index=True)
             
-            # user_id をキーに集計（退会ユーザーも一意のIDで紐付け）
-            # 100位以下のデータはAPIに含まれないため、あくまで「各イベント100位以内の合算」となる点に注意
+            # ②・③・④ 各項目の集計
             summary_df = combined_df.groupby("user_id").agg({
-                "name": "last",          # 最後に取得した名前を表示
-                "point": "sum",          # ポイント合算
-                "rank": "mean",          # 平均順位（参考値）
-                "対象イベント": "count"    # 何回100位以内に入ったか
-            }).rename(columns={
-                "point": "合計ポイント",
-                "対象イベント": "100位入賞回数",
-                "rank": "平均順位"
-            }).sort_values("合計ポイント", ascending=False)
+                "name": "last",
+                "point": ["sum", "mean"], # 合計と平均（入賞時）
+                "rank": "mean",           # 平均順位（入賞時）
+                "user_id": "count"        # 入賞回数
+            })
 
-            # 表示用の整形
-            summary_df["平均順位"] = summary_df["平均順位"].map('{:.1f}'.format)
+            # カラム名の整理
+            summary_df.columns = ["ユーザー名", "合計ポイント", "入賞時平均ポイント", "入賞時平均順位", "100位入賞回数"]
+            summary_df.index.name = "ユーザーID"
+
+            # ① ランキング（順位）の計算（同じポイントなら同順位：min方式）
+            summary_df["ランキング"] = summary_df["合計ポイント"].rank(ascending=False, method='min').astype(int)
+
+            # 項目の並び替え（ランキングを先頭、ユーザーIDを保持）
+            summary_df = summary_df.reset_index()
+            cols = ["ランキング", "ユーザー名", "合計ポイント", "入賞時平均ポイント", "入賞時平均順位", "100位入賞回数", "ユーザーID"]
+            summary_df = summary_df[cols]
+
+            # 合計ポイント順にソート
+            summary_df = summary_df.sort_values("ランキング")
+
+            # 表示用の整形（カンマ区切りと小数点）
             summary_df["合計ポイント"] = summary_df["合計ポイント"].map('{:,}'.format)
+            summary_df["入賞時平均ポイント"] = summary_df["入賞時平均ポイント"].map('{:,.1f}'.format)
+            summary_df["入賞時平均順位"] = summary_df["入賞時平均順位"].map('{:.1f}'.format)
 
             st.success(f"集計完了: {len(selected_names)} 件のイベントを合算しました。")
             
-            # 集計結果の表示
+            # 結果表示
             st.write("### 🏆 合算貢献ランキング (TOP 100)")
-            st.dataframe(summary_df.head(100), use_container_width=True)
+            st.dataframe(summary_df.head(100), use_container_width=True, hide_index=True)
             
-            # CSVダウンロード（分析結果用）
-            res_csv = summary_df.to_csv(index=True, encoding="utf-8-sig").encode("utf-8-sig")
+            # CSVダウンロード
+            res_csv = summary_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
             st.download_button("集計結果をCSVで保存", data=res_csv, file_name="combined_contribution.csv")
         else:
             st.error("ランキングデータを取得できませんでした。")
