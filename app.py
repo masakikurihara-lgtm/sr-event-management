@@ -2025,7 +2025,7 @@ if selected_names:
                         sort=saved_names, 
                         title='イベント名',
                         axis=alt.Axis(
-                            labelAngle=-45,     # ラベルを45度斜めにする
+                            labelAngle=45,     # ラベルを45度斜めにする
                             labelLimit=150,     # ラベルの最大幅（ピクセル）を指定し、超える場合は「...」にする
                             labelFontSize=11    # 文字サイズを少し調整（お好みで）
                         )
