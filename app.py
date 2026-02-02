@@ -2005,6 +2005,8 @@ if selected_names:
                     }
                 )
 
+                st.write("")
+
                 # --- グラフの表示：表の数値（41.59）と整合性を取る ---
                 import altair as alt
                 base = alt.Chart(u_df).encode(x=alt.X('イベント名:N', sort=saved_names, title='イベント名'))
