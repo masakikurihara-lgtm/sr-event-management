@@ -1972,5 +1972,75 @@ if selected_names:
             # CSVダウンロード
             res_csv = summary_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
             st.download_button("集計結果をCSVで保存", data=res_csv, file_name="combined_contribution.csv")
+
+
+            # =========================================================
+            # 🔍 追加機能: 特定ユーザーの詳細分析（一覧表 ＋ 推移グラフ）
+            # =========================================================
+            st.write("---")
+            st.subheader("🔍 特定ユーザーの詳細分析")
+            
+            # ユーザーIDの選択（または直接入力）
+            user_list = summary_df["ユーザーID"].unique().tolist()
+            target_user_id = st.selectbox(
+                "詳細を確認したいユーザーIDを選択してください",
+                options=user_list
+            )
+
+            if target_user_id:
+                # 該当ユーザーのデータを抽出
+                u_df = combined_df[combined_df["user_id"] == target_user_id].copy()
+                u_name = u_df["name"].iloc[-1]
+                
+                # 選択されたイベント順にデータを並べる（時系列順）
+                u_df['対象イベント'] = pd.Categorical(u_df['対象イベント'], categories=selected_names, ordered=True)
+                u_df = u_df.sort_values('対象イベント')
+
+                st.write(f"### 👤 {u_name} さんの集計詳細")
+
+                # 1. まず「一覧表」を表示
+                st.write("##### 📝 イベント別成績一覧")
+                st.dataframe(
+                    u_df[['対象イベント', 'point', 'rank']].rename(
+                        columns={'対象イベント':'イベント名', 'point':'貢献ポイント', 'rank':'順位'}
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "貢献ポイント": st.column_config.NumberColumn(format="%d"),
+                        "順位": st.column_config.NumberColumn(format="%d 位")
+                    }
+                )
+
+                # 2. 次に「グラフ」を表示（ポイント：棒 / 順位：線 の2軸）
+                st.write("##### 📈 貢献ポイントと順位の推移")
+                
+                import altair as alt
+
+                base = alt.Chart(u_df).encode(
+                    x=alt.X('対象イベント:N', sort=selected_names, title='イベント名')
+                )
+
+                # ポイント（棒グラフ）
+                bar = base.mark_bar(color='#5271FF', opacity=0.6).encode(
+                    y=alt.Y('point:Q', title='支援ポイント（棒）')
+                )
+
+                # 順位（折れ線グラフ：右軸）※順位なので反転させて1位を上に
+                line = base.mark_line(color='#FF4B4B', point=True).encode(
+                    y=alt.Y('rank:Q', title='順位（線：1位が上）', scale=alt.Scale(reverse=True)),
+                    tooltip=['対象イベント', 'point', 'rank']
+                )
+
+                # 重ね合わせ
+                layered_chart = alt.layer(bar, line).resolve_scale(
+                    y='independent'
+                ).properties(
+                    width='container',
+                    height=400
+                )
+
+                st.altair_chart(layered_chart, use_container_width=True)
+
         else:
             st.error("ランキングデータを取得できませんでした。")
