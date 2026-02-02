@@ -1880,6 +1880,7 @@ if selected_names:
             
             if ranking:
                 temp_df = pd.DataFrame(ranking)
+                temp_df["対象イベント"] = name
                 # ⑤ 退会ユーザー名の置換処理（Unsubscribed User または 退会済みユーザー を強調）
                 # JSON上の表記揺れに対応するため str.contains を使用
                 temp_df['name'] = temp_df['name'].apply(
