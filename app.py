@@ -2043,7 +2043,7 @@ if selected_names:
                         alt.Tooltip('イベント名:N'),
                         alt.Tooltip('支援ポイント:Q', format=','),
                         alt.Tooltip('順位:Q'),
-                        alt.Tooltip('支援割合:Q', format='.2f', title='支援割合(%)')
+                        alt.Tooltip('支援割合:Q', format='.2f%', title='支援割合(%)')
                     ]
                 )
                 
