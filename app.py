@@ -1976,7 +1976,6 @@ if selected_names:
                     if not target_event_row.empty:
                         raw_val = target_event_row["ポイント"].iloc[0]
                         event_total_point = float(str(raw_val).replace(',', ''))
-                        # 全体情報を取得
                         event_total_rank = target_event_row["順位"].iloc[0]
                         event_level = target_event_row["レベル"].iloc[0]
                     else:
@@ -1994,8 +1993,8 @@ if selected_names:
                         "順位": r_val,
                         "支援ポイント": p_val,
                         "支援割合": share_pct,
-                        # 【修正】1つの文字列にまとめて「全体成績」列として定義
-                        "全体成績": f"{event_total_rank} / {event_total_point:,.0f} pts / Lv.{event_level}"
+                        # 情報を1つにまとめ、極力短く表記（列幅を節約するため）
+                        "全体(順位/pt/Lv)": f"{event_total_rank}/{event_total_point/10000:.1f}万/{event_level}"
                     })
                 
                 u_df = pd.DataFrame(user_event_data)
@@ -2004,21 +2003,17 @@ if selected_names:
 
                 st.write(f"###### 👤 {u_name} さんの集計詳細")
                 
-                # --- 表の表示 ---
+                # --- 表の表示：列幅を明示的に指定してイベント名を広く保つ ---
                 st.dataframe(
                     u_df, 
                     use_container_width=True, 
                     hide_index=True,
                     column_config={
-                        "順位": st.column_config.NumberColumn("貢献ランク", format="%d 位"),
-                        "支援ポイント": st.column_config.NumberColumn("貢献ポイント", format="%d"),
-                        "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%"),
-                        "イベント名": st.column_config.TextColumn("イベント名", width="medium"),
-                        # 【修正】右端に情報をまとめ、補足情報であることを示す
-                        "全体成績": st.column_config.TextColumn(
-                            "全体成績 (順位/ポイント/Lv)", 
-                            help="そのイベント自体の最終結果です"
-                        )
+                        "イベント名": st.column_config.TextColumn("イベント名", width="large"),
+                        "順位": st.column_config.NumberColumn("順位", format="%d 位", width="small"),
+                        "支援ポイント": st.column_config.NumberColumn("支援ポイント", format="%d", width="small"),
+                        "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%", width="small"),
+                        "全体(順位/pt/Lv)": st.column_config.TextColumn("全体(順位/pt/Lv)", width="medium")
                     }
                 )
 
