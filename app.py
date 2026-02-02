@@ -1987,15 +1987,16 @@ if selected_names:
                     r_val = int(event_match["rank"].iloc[0]) if not event_match.empty else None
                     share_pct = (p_val / event_total_point * 100) if event_total_point > 0 else 0
                     
-                    # セパレータのスペースも詰め、正確な数値のみを凝縮
-                    total_info = f"{event_total_rank}位|{event_total_point:,.0f}|L{event_level}"
+                    # 縦線や記号を廃止。正確な数値を半角スペースだけで区切る
+                    # 例: "2位 2,117,911 L2"
+                    total_info = f"{event_total_rank}位 {event_total_point:,.0f} L{event_level}"
                     
                     user_event_data.append({
                         "イベント名": e_name,
                         "順位": r_val,
                         "支援ポイント": p_val,
                         "支援割合": share_pct,
-                        "全体": total_info
+                        "全体(順位 pt Lv)": total_info
                     })
                 
                 u_df = pd.DataFrame(user_event_data)
@@ -2010,7 +2011,6 @@ if selected_names:
 
                 st.write(f"###### 👤 {u_name} さんの集計詳細")
                 
-                # --- すべての数値列を small に固定 ---
                 st.dataframe(
                     styled_df, 
                     use_container_width=True, 
@@ -2020,7 +2020,11 @@ if selected_names:
                         "順位": st.column_config.NumberColumn("順位", format="%d 位", width="small"),
                         "支援ポイント": st.column_config.NumberColumn("支援ポイント", format="%d", width="small"),
                         "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%", width="small"),
-                        "全体": st.column_config.TextColumn("全体(順/pt/L)", width="small") # smallに固定
+                        # 右寄せを強調するため、あえてTextColumnで文字として扱い、幅を最小化
+                        "全体(順位 pt Lv)": st.column_config.TextColumn(
+                            "全体(順位 pt Lv)", 
+                            width="small",
+                        )
                     }
                 )
 
