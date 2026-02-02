@@ -1945,6 +1945,7 @@ if selected_names:
                     ),
                     "合計ポイント": st.column_config.NumberColumn(
                         "合計ポイント",
+                        format="%d",
                         width="medium",
                     ),
                     "入賞時平均ポイント": st.column_config.NumberColumn(
