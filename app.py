@@ -1967,7 +1967,7 @@ if selected_names:
         # 📈 順位変動（急上昇・急下落）分析機能
         # =========================================================
         st.write("---")
-        st.markdown("#### 📈 上位層の順位急変動アラート")
+        st.markdown("##### 📈 上位層の順位急変動アラート")
 
         with st.expander("設定と抽出条件", expanded=True):
             col1, col2 = st.columns(2)
@@ -1980,7 +1980,7 @@ if selected_names:
 
         if "combined_df" in st.session_state:
             c_df = st.session_state["combined_df"].copy()
-            ev_list = st.session_state["last_selected_names"]
+            ev_list = st.session_state["last_selected_names"][::-1]
             
             if len(ev_list) < 2:
                 st.warning("変動を分析するには、2つ以上のイベントを選択してください。")
