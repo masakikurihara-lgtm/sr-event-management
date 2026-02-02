@@ -1971,9 +1971,9 @@ if selected_names:
         # ⚠️ map処理を削除またはコメントアウトします。
         # 文字列に変換せず、数値のまま st.dataframe に渡すのがポイントです。
 
-        st.write("##### 🏆 合算貢献ランキング (TOP 100)")
+        st.write("##### 🏆 合算貢献ランキング (全集計対象)")
         st.dataframe(
-            display_df.head(100),
+            display_df,  # ← .head(100) を削除
             use_container_width=True,
             hide_index=True,
             column_config={
