@@ -1971,20 +1971,16 @@ if selected_names:
                 u_name = u_df_raw["name"].iloc[-1]
                 user_event_data = []
                 
-                # ヘルプに表示するための「全イベントのまとめ情報」を作成
-                all_event_summary = "【イベント全体実績】\n"
-                
                 for e_name in saved_names:
                     target_event_row = df[df["イベント名"] == e_name]
                     if not target_event_row.empty:
                         event_total_point = float(str(target_event_row["ポイント"].iloc[0]).replace(',', ''))
                         event_total_rank = target_event_row["順位"].iloc[0]
                         event_level = target_event_row["レベル"].iloc[0]
-                        
-                        # 各イベントの情報を1行ずつ追加
-                        all_event_summary += f"・{e_name[:10]}...: {event_total_rank} / {event_total_point:,.0f}pts / Lv.{event_level}\n"
                     else:
                         event_total_point = 0
+                        event_total_rank = "-"
+                        event_level = "-"
                     
                     event_match = u_df_raw[u_df_raw["対象イベント"] == e_name]
                     p_val = event_match["point"].iloc[0] if not event_match.empty else 0
@@ -1992,32 +1988,34 @@ if selected_names:
                     share_pct = (p_val / event_total_point * 100) if event_total_point > 0 else 0
                     
                     user_event_data.append({
-                        "イベント名": e_name, # 元のまま
-                        "順位": r_val,       # 元のまま
-                        "支援ポイント": p_val, # 元のまま
-                        "支援割合": share_pct  # 元のまま
+                        "イベント名": e_name,
+                        "順位": r_val,
+                        "支援ポイント": p_val,
+                        "支援割合": share_pct,
+                        # 最後の列に正確な情報をすべてまとめる
+                        "全体(順位/ポイント/Lv)": f"{event_total_rank} / {event_total_point:,.0f} pts / Lv.{event_level}"
                     })
                 
                 u_df = pd.DataFrame(user_event_data)
                 u_df['イベント名'] = pd.Categorical(u_df['イベント名'], categories=saved_names, ordered=True)
                 u_df = u_df.sort_values('イベント名')
 
+                # --- ハイライト設定：個人の実績列（順位・支援ポイント・支援割合）を薄く色付け ---
+                # background-color: #f0f2f6 はStreamlit標準の薄いグレー/ブルー系です
+                styled_df = u_df.style.map(lambda x: 'background-color: #f0f2f6', subset=['順位', '支援ポイント', '支援割合'])
+
                 st.write(f"###### 👤 {u_name} さんの集計詳細")
                 
-                # --- 表の表示：見た目は一切変えず、見出しにヒントを隠す ---
                 st.dataframe(
-                    u_df, 
+                    styled_df, 
                     use_container_width=True, 
                     hide_index=True,
                     column_config={
-                        "イベント名": st.column_config.TextColumn(
-                            "イベント名", 
-                            width="large",
-                            help=all_event_summary # ← 見出しの「？」にマウスを乗せると全実績が出る
-                        ),
+                        "イベント名": st.column_config.TextColumn("イベント名", width="large"),
                         "順位": st.column_config.NumberColumn("順位", format="%d 位"),
                         "支援ポイント": st.column_config.NumberColumn("支援ポイント", format="%d"),
-                        "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%")
+                        "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%"),
+                        "全体(順位/ポイント/Lv)": st.column_config.TextColumn("全体(順位/pts/Lv)", width="medium")
                     }
                 )
 
