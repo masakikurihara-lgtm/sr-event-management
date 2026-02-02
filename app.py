@@ -1849,7 +1849,7 @@ st.markdown("#### 📊 選択イベントの貢献度集計・分析")
 # 1. 選択肢の作成
 event_options = df_show["イベント名"].tolist()
 selected_names = st.multiselect(
-    "分析対象のイベントを複数選択してください（最大5件程度を推奨）",
+    "分析対象のイベントを複数選択してください（10件程度までを推奨）",
     options=event_options,
     help="選択したイベントの貢献100位までのデータを合算・分析します。"
 )
