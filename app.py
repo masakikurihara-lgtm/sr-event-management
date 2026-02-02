@@ -1896,17 +1896,26 @@ if selected_names:
 
         if all_data:
             combined_df = pd.concat(all_data, ignore_index=True)
+            
+            # 【追加】25位以内判定用フラグ
+            combined_df["is_top25"] = combined_df["rank"] <= 25
+            
             summary_df = combined_df.groupby("user_id").agg({
                 "name": "last",
                 "point": ["sum", "mean"],
                 "rank": "mean",
-                "user_id": "count"
+                "user_id": "count",
+                "is_top25": "sum"  # 【追加】25位以内の合計回数
             })
-            summary_df.columns = ["ユーザー名", "合計ポイント", "入賞時平均ポイント", "入賞時平均順位", "100位入賞回数"]
+            
+            # 【修正】カラム名に「25位内入賞回数」を追加
+            summary_df.columns = ["ユーザー名", "合計ポイント", "入賞時平均ポイント", "入賞時平均順位", "100位入賞回数", "25位入賞回数"]
             summary_df.index.name = "ユーザーID"
             summary_df["ランキング"] = summary_df["合計ポイント"].rank(ascending=False, method='min').astype(int)
             summary_df = summary_df.reset_index()
-            cols = ["ランキング", "ユーザー名", "合計ポイント", "入賞時平均ポイント", "入賞時平均順位", "100位入賞回数", "ユーザーID"]
+            
+            # 【修正】列の並び順：100位の前に25位を配置
+            cols = ["ランキング", "ユーザー名", "合計ポイント", "入賞時平均ポイント", "入賞時平均順位", "25位入賞回数", "100位入賞回数", "ユーザーID"]
             summary_df = summary_df[cols].sort_values("ランキング")
 
             master_event_list = df["イベント名"].tolist()
@@ -1941,9 +1950,10 @@ if selected_names:
                 "ランキング": st.column_config.NumberColumn("順位", width="small", format="%d 位"),
                 "ユーザー名": st.column_config.TextColumn("ユーザー名", width="large"),
                 "合計ポイント": st.column_config.NumberColumn("合計支援ポイント", width="medium", format="%d"),
-                # 【修正】%.1f を指定することで、整数でも .0 まで表示されます
                 "入賞時平均ポイント": st.column_config.NumberColumn("入賞時平均ポイント", width="medium", format="%.1f"),
                 "入賞時平均順位": st.column_config.NumberColumn("入賞時平均順位", width="medium", format="%.1f"),
+                # 【追加】100位の前に25位を配置。幅は100位と同様 medium
+                "25位入賞回数": st.column_config.NumberColumn("25位内入賞回数", width="medium", format="%d"),
                 "100位入賞回数": st.column_config.NumberColumn("100位内入賞回数", width="medium", format="%d"),
                 "ユーザーID": st.column_config.TextColumn("ユーザーID", width="medium"),
             }
