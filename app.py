@@ -2017,7 +2017,7 @@ if selected_names:
 
         if "combined_df" in st.session_state:
             c_df = st.session_state["combined_df"].copy()
-            # 元のコード：ev_list は新しい順になっている
+            # ユーザーが指定した通りの最新順（[::-1]）
             ev_list = st.session_state["last_selected_names"][::-1]
             
             if len(ev_list) < 2:
@@ -2038,27 +2038,27 @@ if selected_names:
                         if not match.empty:
                             user_history.append({"ev": ev_name, "rank": int(match["rank"].iloc[0])})
                         else:
+                            # データがない ＝ 100位圏外
                             user_history.append({"ev": ev_name, "rank": 101})
 
-                    # 時系列に沿って比較
+                    # 時系列（user_history）に沿って前後のイベントを比較
                     for i in range(len(user_history) - 1):
-                        # 元コードの構造を維持（iが最新側、i+1が過去側）
-                        curr = user_history[i]   # 後（新しい）
-                        prev = user_history[i+1] # 前（古い）
+                        curr = user_history[i]   # 新しい
+                        prev = user_history[i+1] # 古い
                         
                         curr_r = curr["rank"]
                         prev_r = prev["rank"]
-                        diff = curr_r - prev_r # 負なら上昇、正なら下落
+                        diff = curr_r - prev_r
                         
                         # 表示用の順位文字列
                         prev_r_str = f"{prev_r}位" if prev_r <= 100 else "圏外"
                         curr_r_str = f"{curr_r}位" if curr_r <= 100 else "圏外"
 
-                        # 【修正点1】圏外が絡む場合の文言修正
+                        # 【修正点1】圏外が絡む場合の文言を「矢印」形式に変更
                         if prev_r > 100 or curr_r > 100:
-                            v_diff_val = f"{prev_r_str} ⇒ {curr_r_str}"
+                            v_diff_detail = f"{prev_r_str} ⇒ {curr_r_str}"
                         else:
-                            v_diff_val = f"{abs(diff)}位ダウン" if diff > 0 else f"{abs(diff)}位アップ"
+                            v_diff_detail = f"{abs(diff)}位ダウン" if diff > 0 else f"{abs(diff)}位アップ"
 
                         # ケースA: 大幅下落
                         if prev_r <= base_rank_limit and diff >= diff_threshold:
@@ -2070,8 +2070,8 @@ if selected_names:
                                 "順位（前）": prev_r_str,
                                 "イベント（後）": curr["ev"],
                                 "順位（後）": curr_r_str,
-                                "変動幅": v_diff_val,
-                                "time_sort": i, # 行のソート用
+                                "変動幅": v_diff_detail,
+                                "time_idx": i, # 同一ユーザー内での並び順用
                                 "ユーザーID": uid
                             })
                         
@@ -2085,18 +2085,18 @@ if selected_names:
                                 "順位（前）": prev_r_str,
                                 "イベント（後）": curr["ev"],
                                 "順位（後）": curr_r_str,
-                                "変動幅": v_diff_val,
-                                "time_sort": i, # 行のソート用
+                                "変動幅": v_diff_detail,
+                                "time_idx": i, # 同一ユーザー内での並び順用
                                 "ユーザーID": uid
                             })
 
                 if alert_data:
                     alert_df = pd.DataFrame(alert_data)
                     
-                    # 【修正点2】総合順位で昇順、同一ユーザー内は最新順（iが小さい順）でソート
-                    alert_df = alert_df.sort_values(["順位", "time_sort"], ascending=[True, True])
+                    # 【修正点2】「総合順位（昇順）」かつ「同一ユーザー内は最新順（time_idx昇順）」でソート
+                    alert_df = alert_df.sort_values(["順位", "time_idx"], ascending=[True, True])
                     
-                    # 列の指定
+                    # --- 追加：列の並び順を「順位」が一番左に来るように指定 ---
                     display_cols = ["順位", "ユーザー名", "種別", "イベント（前）", "順位（前）", "イベント（後）", "順位（後）", "変動幅", "ユーザーID"]
                     alert_df = alert_df[display_cols]
 
