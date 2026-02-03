@@ -1984,7 +1984,7 @@ if selected_names:
                 "入賞時平均順位": st.column_config.NumberColumn("100位内時平均順位", width="medium", format="%.1f"),
                 "25位入賞回数": st.column_config.NumberColumn("25位内数", width="small", format="%d"),
                 "100位入賞回数": st.column_config.NumberColumn("100位内数", width="small", format="%d"),
-                "ユーザーID": st.column_config.NumberColumn("ユーザーID", width="medium"),
+                "ユーザーID": st.column_config.NumberColumn("ユーザーID", width="small"),
             }
         )
         
