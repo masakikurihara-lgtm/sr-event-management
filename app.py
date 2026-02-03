@@ -2017,7 +2017,6 @@ if selected_names:
 
         if "combined_df" in st.session_state:
             c_df = st.session_state["combined_df"].copy()
-            # ユーザーが指定した通りの最新順（[::-1]）
             ev_list = st.session_state["last_selected_names"][::-1]
             
             if len(ev_list) < 2:
@@ -2032,6 +2031,7 @@ if selected_names:
                     u_name = group["name"].iloc[-1]
                     
                     # --- 【重要】全イベントの枠組みを作成して圏外を補完 ---
+                    # ユーザーが参加していないイベントも「101位」として扱う
                     user_history = []
                     for ev_name in ev_list:
                         match = group[group["対象イベント"] == ev_name]
@@ -2043,24 +2043,18 @@ if selected_names:
 
                     # 時系列（user_history）に沿って前後のイベントを比較
                     for i in range(len(user_history) - 1):
-                        curr = user_history[i]   # 新しい
-                        prev = user_history[i+1] # 古い
+                        prev = user_history[i]
+                        curr = user_history[i+1]
                         
-                        curr_r = curr["rank"]
                         prev_r = prev["rank"]
+                        curr_r = curr["rank"]
                         diff = curr_r - prev_r
                         
-                        # 表示用の順位文字列
+                        # 表示用の順位文字列（101位は「圏外」と表示）
                         prev_r_str = f"{prev_r}位" if prev_r <= 100 else "圏外"
                         curr_r_str = f"{curr_r}位" if curr_r <= 100 else "圏外"
 
-                        # 【修正点1】圏外が絡む場合の文言を「矢印」形式に変更
-                        if prev_r > 100 or curr_r > 100:
-                            v_diff_detail = f"{prev_r_str} ⇒ {curr_r_str}"
-                        else:
-                            v_diff_detail = f"{abs(diff)}位ダウン" if diff > 0 else f"{abs(diff)}位アップ"
-
-                        # ケースA: 大幅下落
+                        # ケースA: 大幅下落 (前回上位 -> 今回下落または圏外)
                         if prev_r <= base_rank_limit and diff >= diff_threshold:
                             alert_data.append({
                                 "順位": total_rank,
@@ -2070,12 +2064,11 @@ if selected_names:
                                 "順位（前）": prev_r_str,
                                 "イベント（後）": curr["ev"],
                                 "順位（後）": curr_r_str,
-                                "変動幅": v_diff_detail,
-                                "time_idx": i, # 同一ユーザー内での並び順用
+                                "変動幅": f"{diff}位ダウン",
                                 "ユーザーID": uid
                             })
                         
-                        # ケースB: 大幅上昇
+                        # ケースB: 大幅上昇 (前回圏外または下位 -> 今回上位)
                         elif curr_r <= base_rank_limit and diff <= -diff_threshold:
                             alert_data.append({
                                 "順位": total_rank,
@@ -2085,16 +2078,14 @@ if selected_names:
                                 "順位（前）": prev_r_str,
                                 "イベント（後）": curr["ev"],
                                 "順位（後）": curr_r_str,
-                                "変動幅": v_diff_detail,
-                                "time_idx": i, # 同一ユーザー内での並び順用
+                                "変動幅": f"{abs(diff)}位アップ",
                                 "ユーザーID": uid
                             })
 
                 if alert_data:
                     alert_df = pd.DataFrame(alert_data)
                     
-                    # 【修正点2】「総合順位（昇順）」かつ「同一ユーザー内は最新順（time_idx昇順）」でソート
-                    alert_df = alert_df.sort_values(["順位", "time_idx"], ascending=[True, True])
+                    alert_df = alert_df.sort_values("順位", ascending=True)
                     
                     # --- 追加：列の並び順を「順位」が一番左に来るように指定 ---
                     display_cols = ["順位", "ユーザー名", "種別", "イベント（前）", "順位（前）", "イベント（後）", "順位（後）", "変動幅", "ユーザーID"]
@@ -2110,7 +2101,7 @@ if selected_names:
                         use_container_width=True,
                         hide_index=True,
                         column_config={
-                            "順位": st.column_config.NumberColumn("順位", width="small", format="%d 位"),
+                            "順位": st.column_config.NumberColumn("順位", width="small", format="%d 位"), # ← 【追加】
                             "ユーザー名": st.column_config.TextColumn("ユーザー名", width="medium"),
                             "種別": st.column_config.TextColumn("種別", width="medium"),
                             "変動幅": st.column_config.TextColumn("変動詳細", width="medium"),
