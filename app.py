@@ -2023,52 +2023,61 @@ if selected_names:
                 st.warning("変動を分析するには、2つ以上のイベントを選択してください。")
             else:
                 alert_data = []
-                
-                # --- 追加：ユーザーIDと総合順位の対応辞書を作成 ---
                 rank_map = summary_df.set_index("ユーザーID")["ランキング"].to_dict()
                 
-                # ユーザーごとにイベント時系列順でループ
+                # ユーザーごとにループ
                 for uid, group in c_df.groupby("user_id"):
-                    # 総合順位を取得（念のため存在しない場合は "-"）
                     total_rank = rank_map.get(uid, "-")
+                    u_name = group["name"].iloc[-1]
                     
-                    # 選択されたイベント順にソート
-                    group['ev_order'] = group['対象イベント'].apply(lambda x: ev_list.index(x) if x in ev_list else 999)
-                    group = group.sort_values('ev_order')
-                    
-                    # 前後のイベントを比較
-                    for i in range(len(group) - 1):
-                        prev_row = group.iloc[i]
-                        curr_row = group.iloc[i+1]
+                    # --- 【重要】全イベントの枠組みを作成して圏外を補完 ---
+                    # ユーザーが参加していないイベントも「101位」として扱う
+                    user_history = []
+                    for ev_name in ev_list:
+                        match = group[group["対象イベント"] == ev_name]
+                        if not match.empty:
+                            user_history.append({"ev": ev_name, "rank": int(match["rank"].iloc[0])})
+                        else:
+                            # データがない ＝ 100位圏外
+                            user_history.append({"ev": ev_name, "rank": 101})
+
+                    # 時系列（user_history）に沿って前後のイベントを比較
+                    for i in range(len(user_history) - 1):
+                        prev = user_history[i]
+                        curr = user_history[i+1]
                         
-                        prev_r = prev_row["rank"]
-                        curr_r = curr_row["rank"]
+                        prev_r = prev["rank"]
+                        curr_r = curr["rank"]
                         diff = curr_r - prev_r
                         
-                        # ケースA: 大幅下落
+                        # 表示用の順位文字列（101位は「圏外」と表示）
+                        prev_r_str = f"{prev_r}位" if prev_r <= 100 else "圏外"
+                        curr_r_str = f"{curr_r}位" if curr_r <= 100 else "圏外"
+
+                        # ケースA: 大幅下落 (前回上位 -> 今回下落または圏外)
                         if prev_r <= base_rank_limit and diff >= diff_threshold:
                             alert_data.append({
-                                "順位": total_rank,  # ← 【追加】
-                                "ユーザー名": prev_row["name"],
+                                "順位": total_rank,
+                                "ユーザー名": u_name,
                                 "種別": "🔻大幅下落",
-                                "イベント（前）": prev_row["対象イベント"],
-                                "順位（前）": f"{prev_r}位",
-                                "イベント（後）": curr_row["対象イベント"],
-                                "順位（後）": f"{curr_r}位",
+                                "イベント（前）": prev["ev"],
+                                "順位（前）": prev_r_str,
+                                "イベント（後）": curr["ev"],
+                                "順位（後）": curr_r_str,
                                 "変動幅": f"{diff}位ダウン",
                                 "ユーザーID": uid
                             })
                         
-                        # ケースB: 大幅上昇
+                        # ケースB: 大幅上昇 (前回圏外または下位 -> 今回上位)
                         elif curr_r <= base_rank_limit and diff <= -diff_threshold:
                             alert_data.append({
-                                "順位": total_rank,  # ← 【追加】
-                                "ユーザー名": curr_row["name"],
+                                "順位": total_rank,
+                                "ユーザー名": u_name,
                                 "種別": "🚀大幅上昇",
-                                "イベント（前）": prev_row["対象イベント"],
-                                "順位（前）": f"{prev_r}位",
-                                "イベント（後）": curr_row["対象イベント"],
-                                "順位（後）": f"{curr_r}位",
+                                "イベント（前）": prev["ev"],
+                                "順位（前）": prev_r_str,
+                                "イベント（後）": curr["ev"],
+                                "順位（後）": curr_r_str,
                                 "変動幅": f"{abs(diff)}位アップ",
                                 "ユーザーID": uid
                             })
