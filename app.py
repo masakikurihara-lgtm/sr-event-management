@@ -2020,7 +2020,7 @@ if selected_names:
             ev_list = st.session_state["last_selected_names"][::-1]
             
             if len(ev_list) < 2:
-                st.warning("変動を分析するには、2つ以上のイベントを選択してください.")
+                st.warning("変動を分析するには、2つ以上のイベントを選択してください。")
             else:
                 alert_data = []
                 rank_map = summary_df.set_index("ユーザーID")["ランキング"].to_dict()
@@ -2041,7 +2041,6 @@ if selected_names:
 
                     # 時系列（user_history）に沿って前後のイベントを比較
                     for i in range(len(user_history) - 1):
-                        # 元コードの構造を維持：最新順リストなので i が最新(prev)、i+1 が過去(curr)
                         prev = user_history[i]
                         curr = user_history[i+1]
                         
@@ -2053,49 +2052,48 @@ if selected_names:
                         prev_r_str = f"{prev_r}位" if prev_r <= 100 else "圏外"
                         curr_r_str = f"{curr_r}位" if curr_r <= 100 else "圏外"
 
-                        # 【修正点1】変動幅の表記（圏外が絡む場合は矢印表記、それ以外は元のダウン/アップ）
+                        # --- 【修正点1】圏外が絡む際の変動詳細の表記文言 ---
                         if prev_r > 100 or curr_r > 100:
-                            v_diff_str = f"{curr_r_str} ⇒ {prev_r_str}"
+                            v_detail = f"{prev_r_str} ⇒ {curr_r_str}"
                         else:
-                            v_diff_str = f"{diff}位ダウン" if diff > 0 else f"{abs(diff)}位アップ"
+                            v_detail = f"{diff}位ダウン" if diff > 0 else f"{abs(diff)}位アップ"
 
-                        # ケースA: 大幅下落 (前回上位 -> 今回下落または圏外)
-                        if curr_r <= base_rank_limit and diff >= diff_threshold:
+                        # ケースA: 大幅下落
+                        if prev_r <= base_rank_limit and diff >= diff_threshold:
                             alert_data.append({
                                 "順位": total_rank,
                                 "ユーザー名": u_name,
                                 "種別": "🔻大幅下落",
-                                "イベント（前）": curr["ev"],
-                                "順位（前）": curr_r_str,
-                                "イベント（後）": prev["ev"],
-                                "順位（後）": prev_r_str,
-                                "変動幅": v_diff_str,
-                                "time_sort": i, # ソート用インデックス
+                                "イベント（前）": prev["ev"],
+                                "順位（前）": prev_r_str,
+                                "イベント（後）": curr["ev"],
+                                "順位（後）": curr_r_str,
+                                "変動幅": v_detail,
+                                "time_idx": i, # ソート用に追加
                                 "ユーザーID": uid
                             })
                         
-                        # ケースB: 大幅上昇 (前回圏外または下位 -> 今回上位)
-                        elif prev_r <= base_rank_limit and diff <= -diff_threshold:
+                        # ケースB: 大幅上昇
+                        elif curr_r <= base_rank_limit and diff <= -diff_threshold:
                             alert_data.append({
                                 "順位": total_rank,
                                 "ユーザー名": u_name,
                                 "種別": "🚀大幅上昇",
-                                "イベント（前）": curr["ev"],
-                                "順位（前）": curr_r_str,
-                                "イベント（後）": prev["ev"],
-                                "順位（後）": prev_r_str,
-                                "変動幅": v_diff_str,
-                                "time_sort": i, # ソート用インデックス
+                                "イベント（前）": prev["ev"],
+                                "順位（前）": prev_r_str,
+                                "イベント（後）": curr["ev"],
+                                "順位（後）": curr_r_str,
+                                "変動幅": v_detail,
+                                "time_idx": i, # ソート用に追加
                                 "ユーザーID": uid
                             })
 
                 if alert_data:
                     alert_df = pd.DataFrame(alert_data)
                     
-                    # 【修正点2】「順位」でソートし、同一ユーザー内では「time_sort」昇順（最新の比較が上）
-                    alert_df = alert_df.sort_values(["順位", "time_sort"], ascending=[True, True])
+                    # --- 【修正点2】同一ユーザー内での表示行のソート（最新順：time_idx昇順） ---
+                    alert_df = alert_df.sort_values(["順位", "time_idx"], ascending=[True, True])
                     
-                    # --- 列の並び順指定 ---
                     display_cols = ["順位", "ユーザー名", "種別", "イベント（前）", "順位（前）", "イベント（後）", "順位（後）", "変動幅", "ユーザーID"]
                     alert_df = alert_df[display_cols]
 
