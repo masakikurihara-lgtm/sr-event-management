@@ -2017,7 +2017,6 @@ if selected_names:
 
         if "combined_df" in st.session_state:
             c_df = st.session_state["combined_df"].copy()
-            # ev_list は新しい順になっている [最新, 1つ前, 2つ前...]
             ev_list = st.session_state["last_selected_names"][::-1]
             
             if len(ev_list) < 2:
@@ -2032,7 +2031,7 @@ if selected_names:
                     u_name = group["name"].iloc[-1]
                     
                     # --- 【重要】全イベントの枠組みを作成して圏外を補完 ---
-                    # user_history は ev_list と同じく「新しい順」になる
+                    # ユーザーが参加していないイベントも「101位」として扱う
                     user_history = []
                     for ev_name in ev_list:
                         match = group[group["対象イベント"] == ev_name]
@@ -2044,23 +2043,16 @@ if selected_names:
 
                     # 時系列（user_history）に沿って前後のイベントを比較
                     for i in range(len(user_history) - 1):
-                        # i が「後（新しい）」、i+1 が「前（古い）」
-                        curr = user_history[i]   
-                        prev = user_history[i+1] 
+                        prev = user_history[i]
+                        curr = user_history[i+1]
                         
                         prev_r = prev["rank"]
                         curr_r = curr["rank"]
                         diff = curr_r - prev_r
                         
-                        # 表示用の順位文字列
+                        # 表示用の順位文字列（101位は「圏外」と表示）
                         prev_r_str = f"{prev_r}位" if prev_r <= 100 else "圏外"
                         curr_r_str = f"{curr_r}位" if curr_r <= 100 else "圏外"
-
-                        # 【改善】変動幅の表示を圏外考慮に
-                        if prev_r > 100 or curr_r > 100:
-                            v_diff_str = f"{prev_r_str} ⇒ {curr_r_str}"
-                        else:
-                            v_diff_str = f"{abs(diff)}位{'ダウン' if diff > 0 else 'アップ'}"
 
                         # ケースA: 大幅下落 (前回上位 -> 今回下落または圏外)
                         if prev_r <= base_rank_limit and diff >= diff_threshold:
@@ -2072,8 +2064,7 @@ if selected_names:
                                 "順位（前）": prev_r_str,
                                 "イベント（後）": curr["ev"],
                                 "順位（後）": curr_r_str,
-                                "変動幅": v_diff_str,
-                                "ev_sort_idx": i, # 新しいイベント比較ほど小さい値
+                                "変動幅": f"{diff}位ダウン",
                                 "ユーザーID": uid
                             })
                         
@@ -2087,18 +2078,16 @@ if selected_names:
                                 "順位（前）": prev_r_str,
                                 "イベント（後）": curr["ev"],
                                 "順位（後）": curr_r_str,
-                                "変動幅": v_diff_str,
-                                "ev_sort_idx": i, # 新しいイベント比較ほど小さい値
+                                "変動幅": f"{abs(diff)}位アップ",
                                 "ユーザーID": uid
                             })
 
                 if alert_data:
                     alert_df = pd.DataFrame(alert_data)
                     
-                    # 第一ソート：総合順位（昇順）、第二ソート：イベント新着順（昇順 / iが小さいほど新しい）
-                    alert_df = alert_df.sort_values(["順位", "ev_sort_idx"], ascending=[True, True])
+                    alert_df = alert_df.sort_values("順位", ascending=True)
                     
-                    # --- 列の並び順を指定 ---
+                    # --- 追加：列の並び順を「順位」が一番左に来るように指定 ---
                     display_cols = ["順位", "ユーザー名", "種別", "イベント（前）", "順位（前）", "イベント（後）", "順位（後）", "変動幅", "ユーザーID"]
                     alert_df = alert_df[display_cols]
 
@@ -2112,7 +2101,7 @@ if selected_names:
                         use_container_width=True,
                         hide_index=True,
                         column_config={
-                            "順位": st.column_config.NumberColumn("順位", width="small", format="%d 位"),
+                            "順位": st.column_config.NumberColumn("順位", width="small", format="%d 位"), # ← 【追加】
                             "ユーザー名": st.column_config.TextColumn("ユーザー名", width="medium"),
                             "種別": st.column_config.TextColumn("種別", width="medium"),
                             "変動幅": st.column_config.TextColumn("変動詳細", width="medium"),
