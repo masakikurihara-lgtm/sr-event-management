@@ -2103,7 +2103,7 @@ if selected_names:
                         use_container_width=True,
                         hide_index=True,
                         column_config={
-                            "順位": st.column_config.TextColumn("順位", width="small"),
+                            "順位": st.column_config.NumberColumn("順位", width="small", format="%d 位"),
                             "ユーザー名": st.column_config.TextColumn("ユーザー名", width="medium"),
                             "種別": st.column_config.TextColumn("種別", width="medium"),
                             "変動幅": st.column_config.TextColumn("変動詳細", width="medium"),
