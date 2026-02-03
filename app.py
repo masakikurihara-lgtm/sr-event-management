@@ -2017,7 +2017,8 @@ if selected_names:
 
         if "combined_df" in st.session_state:
             c_df = st.session_state["combined_df"].copy()
-            ev_list = st.session_state["last_selected_names"][::-1]
+            # リストの上（最新）から順に取得
+            ev_list = st.session_state["last_selected_names"]
             
             if len(ev_list) < 2:
                 st.warning("変動を分析するには、2つ以上のイベントを選択してください。")
@@ -2025,9 +2026,7 @@ if selected_names:
                 alert_data = []
                 rank_map = summary_df.set_index("ユーザーID")["ランキング"].to_dict()
                 
-                # ユーザーごとにループ
                 for uid, group in c_df.groupby("user_id"):
-                    # 【重要】ソート用に数値で取得。見つからない場合は非常に大きい数(9999)にして末尾へ
                     try:
                         raw_rank = rank_map.get(uid, 9999)
                         total_rank_num = int(raw_rank) if str(raw_rank).isdigit() else 9999
@@ -2045,8 +2044,9 @@ if selected_names:
                             user_history.append({"ev": ev_name, "rank": 101})
 
                     for i in range(len(user_history) - 1):
-                        prev = user_history[i]
-                        curr = user_history[i+1]
+                        # リストの上にあるものを curr（後）、その下を prev（前）として比較
+                        curr = user_history[i]
+                        prev = user_history[i+1]
                         
                         prev_r = prev["rank"]
                         curr_r = curr["rank"]
@@ -2060,7 +2060,6 @@ if selected_names:
                         else:
                             v_detail = f"{diff}位ダウン" if diff > 0 else f"{abs(diff)}位アップ"
 
-                        # A: 大幅下落 / B: 大幅上昇
                         is_alert = False
                         kind = ""
                         if prev_r <= base_rank_limit and diff >= diff_threshold:
@@ -2072,7 +2071,7 @@ if selected_names:
 
                         if is_alert:
                             alert_data.append({
-                                "順位": total_rank_num, # 数値として保持
+                                "順位": total_rank_num,
                                 "ユーザー名": u_name,
                                 "種別": kind,
                                 "イベント（前）": prev["ev"],
@@ -2080,17 +2079,16 @@ if selected_names:
                                 "イベント（後）": curr["ev"],
                                 "順位（後）": curr_r_str,
                                 "変動幅": v_detail,
-                                "time_idx": i,
+                                "time_idx": i, # 小さいほど最新
                                 "ユーザーID": uid
                             })
 
                 if alert_data:
                     alert_df = pd.DataFrame(alert_data)
                     
-                    # --- 【解決策】数値ベースでソートを実行 ---
+                    # --- 【修正】順位で並べたあと、同一ユーザー内では time_idx 昇順（最新順）に制御 ---
                     alert_df = alert_df.sort_values(["順位", "time_idx"], ascending=[True, True])
                     
-                    # 表示用に数値を整える（9999はハイフンに戻す）
                     alert_df["順位"] = alert_df["順位"].apply(lambda x: x if x != 9999 else "-")
                     
                     display_cols = ["順位", "ユーザー名", "種別", "イベント（前）", "順位（前）", "イベント（後）", "順位（後）", "変動幅", "ユーザーID"]
