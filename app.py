@@ -1897,11 +1897,6 @@ def reset_analysis_settings():
     st.session_state["alert_diff"] = 25  # デフォルト値
     st.session_state["alert_base"] = 9   # デフォルト値
     st.session_state["event_detail_limit_input"] = 10
-    st.session_state["event_detail_select"] = saved_names[0]
-
-
-    if "event_detail_select" in st.session_state:
-            del st.session_state["event_detail_select"]
 
 
 # 3. 集計実行
@@ -1964,6 +1959,7 @@ if selected_names:
             st.session_state["summary_df"] = summary_df
             st.session_state["combined_df"] = combined_df
             st.session_state["last_selected_names"] = sorted_selected_names 
+            st.session_state["event_detail_select"] = sorted_selected_names[0]
             st.success(f"集計完了: {len(selected_names)} 件のイベントを合算しました。")
         else:
             st.error("ランキングデータを取得できませんでした。")
