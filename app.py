@@ -2239,97 +2239,90 @@ if selected_names:
 
 
         # =========================================================
-        # 🎯 新機能: 特定イベントの詳細貢献分析
+        # 🎯 新機能: 特定イベントの詳細貢献分析（カスタムレイアウト版）
         # =========================================================
         st.write("---")
         st.write("##### 🎯 特定イベントの詳細貢献分析")
 
-        # 1. 分析対象イベントの選択
+        # イベント切り替え時にしきい値をリセット
+        def reset_event_limit():
+            st.session_state["event_detail_limit"] = 10
+
         target_event_name = st.selectbox(
             "分析したいイベントを選択してください",
             options=saved_names,
-            key="event_detail_select"
+            key="event_detail_select",
+            on_change=reset_event_limit
         )
 
         if target_event_name:
-            # 2. 表示件数（しきい値）の設定
             limit_n = st.number_input(
                 "分析対象とする上位人数（しきい値）",
-                min_value=1,
-                max_value=100,
-                value=10,
-                step=1,
+                min_value=1, max_value=100, step=1,
                 key="event_detail_limit"
             )
 
-            # 3. データの抽出
-            # そのイベントの全100位データ
+            # データ抽出
             event_ranking_all = combined_df[combined_df["対象イベント"] == target_event_name].copy()
-            
-            # イベント全体の情報を取得（df_show または df から）
             target_ev_master = df[df["イベント名"] == target_event_name].iloc[0]
             total_pts_raw = float(str(target_ev_master["ポイント"]).replace(',', ''))
-            total_rank_str = target_ev_master["順位"]
-            total_lv_str = target_ev_master["レベル"]
-            
-            # 全体情報文字列
-            overall_info = f"{total_rank_str}位 / {total_pts_raw:,.0f} / L{total_lv_str}"
+            overall_info = f"{target_ev_master['順位']}位 / {total_pts_raw:,.0f} / L{target_ev_master['レベル']}"
 
             if not event_ranking_all.empty:
-                # 順位でソートして上位N名を取得
                 top_n_df = event_ranking_all.sort_values("rank").head(limit_n)
-                
-                # 合計値の計算
                 top_n_pts_sum = top_n_df["point"].sum()
                 top_n_share_sum = (top_n_pts_sum / total_pts_raw * 100) if total_pts_raw > 0 else 0
 
-                # --- 表用データの構築 ---
-                event_analysis_rows = []
+                # --- HTMLテーブルの構築 ---
+                table_style = """
+                <style>
+                    .event-analysis-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+                    .event-analysis-table th { background-color: #f3f4f6; padding: 10px; border-bottom: 2px solid #e5e7eb; text-align: center; }
+                    .event-analysis-table td { padding: 8px; border-bottom: 1px solid #f0f0f0; }
+                    .row-total { background-color: #f8f9fa; font-weight: 900; color: #01579b; }
+                    .align-left { text-align: left; }
+                    .align-right { text-align: right; }
+                    .align-center { text-align: center; }
+                </style>
+                """
+
+                html_table = f"{table_style}<table class='event-analysis-table'>"
+                html_table += "<thead><tr><th>貢献ランク</th><th>ユーザー名</th><th>全体(順位/pts/Lv)</th><th>支援ポイント</th><th>支援割合</th></tr></thead>"
+                html_table += "<tbody>"
 
                 # 1行目: 合計行
-                event_analysis_rows.append({
-                    "貢献ランク": f"上位{limit_n}名 合計",
-                    "ユーザー名": f"--- {limit_n}名分の集計 ---",
-                    "全体(順位 / pts / Lv)": overall_info,
-                    "支援ポイント": top_n_pts_sum,
-                    "支援割合": top_n_share_sum
-                })
+                # 「貢献ランク」列を左寄せ（align-left）に設定
+                html_table += f"""
+                <tr class='row-total'>
+                    <td class='align-left'>上位 {limit_n} 名 合計</td>
+                    <td class='align-left'>--- {limit_n} 名分の合計値 ---</td>
+                    <td class='align-center'>{overall_info}</td>
+                    <td class='align-right'>{top_n_pts_sum:,.0f}</td>
+                    <td class='align-right'>{top_n_share_sum:.2f} %</td>
+                </tr>
+                """
 
                 # 2行目以降: 個別データ
+                import html
                 for _, row in top_n_df.iterrows():
                     p_val = row["point"]
                     share_pct = (p_val / total_pts_raw * 100) if total_pts_raw > 0 else 0
-                    
-                    event_analysis_rows.append({
-                        "貢献ランク": f"{int(row['rank'])} 位",
-                        "ユーザー名": row["name"],
-                        "全体(順位 / pts / Lv)": overall_info,
-                        "支援ポイント": p_val,
-                        "支援割合": share_pct
-                    })
+                    safe_name = html.escape(str(row['name']))
 
-                analysis_display_df = pd.DataFrame(event_analysis_rows)
-
-                # スタイリング: 合計行（0行目）を強調
-                def highlight_total_row(s):
-                    return ['background-color: #e1f5fe; font-weight: 900; color: #01579b;' if s.name == 0 else '' for _ in s]
+                    # 「貢献ランク」列を右寄せ（align-right）に設定
+                    html_table += f"""
+                    <tr>
+                        <td class='align-right'>{int(row['rank'])} 位</td>
+                        <td class='align-left'>{safe_name}</td>
+                        <td class='align-center'>{overall_info}</td>
+                        <td class='align-right'>{p_val:,.0f}</td>
+                        <td class='align-right'>{share_pct:.2f} %</td>
+                    </tr>
+                    """
+                
+                html_table += "</tbody></table>"
 
                 st.write(f"###### 📊 {target_event_name} の貢献構造 (上位 {limit_n} 名)")
+                st.markdown(html_table, unsafe_allow_html=True)
                 
-                st.dataframe(
-                    analysis_display_df.style.apply(highlight_total_row, axis=1),
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "貢献ランク": st.column_config.TextColumn("貢献ランク", width="small"),
-                        "ユーザー名": st.column_config.TextColumn("ユーザー名", width="large"),
-                        "全体(順位 / pts / Lv)": st.column_config.TextColumn("全体(順位 / pt / Lv)", width="medium"),
-                        "支援ポイント": st.column_config.NumberColumn("支援ポイント", format="%d", width="small"),
-                        "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%", width="small")
-                    }
-                )
-                
-                # 補足：ピラミッド構造を意識した簡単なサマリー
                 st.info(f"💡 このイベントでは、上位 {limit_n} 名で全体の **{top_n_share_sum:.1f}%** を占めています。")
-            else:
-                st.warning("このイベントのランキングデータが見つかりませんでした。")                
