@@ -2239,12 +2239,11 @@ if selected_names:
 
 
         # =========================================================
-        # 🎯 新機能: 特定イベントの詳細貢献分析（カスタムレイアウト版）
+        # 🎯 新機能: 特定イベントの詳細貢献分析（統一デザイン版）
         # =========================================================
         st.write("---")
         st.write("##### 🎯 特定イベントの詳細貢献分析")
 
-        # イベント切り替え時にしきい値をリセット
         def reset_event_limit():
             st.session_state["event_detail_limit"] = 10
 
@@ -2269,60 +2268,56 @@ if selected_names:
             overall_info = f"{target_ev_master['順位']}位 / {total_pts_raw:,.0f} / L{target_ev_master['レベル']}"
 
             if not event_ranking_all.empty:
+                # --- 1. 合計行用のデータ作成 ---
                 top_n_df = event_ranking_all.sort_values("rank").head(limit_n)
                 top_n_pts_sum = top_n_df["point"].sum()
                 top_n_share_sum = (top_n_pts_sum / total_pts_raw * 100) if total_pts_raw > 0 else 0
 
-                # --- HTMLテーブルの構築 ---
-                table_style = """
-                <style>
-                    .event-analysis-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-                    .event-analysis-table th { background-color: #f3f4f6; padding: 10px; border-bottom: 2px solid #e5e7eb; text-align: center; }
-                    .event-analysis-table td { padding: 8px; border-bottom: 1px solid #f0f0f0; }
-                    .row-total { background-color: #f8f9fa; font-weight: 900; color: #01579b; }
-                    .align-left { text-align: left; }
-                    .align-right { text-align: right; }
-                    .align-center { text-align: center; }
-                </style>
-                """
+                summary_row_df = pd.DataFrame([{
+                    "貢献ランク": f"上位 {limit_n} 名 合計",
+                    "ユーザー名": f"--- {limit_n} 名分の合計値 ---",
+                    "全体(順位 / pts / Lv)": overall_info,
+                    "支援ポイント": top_n_pts_sum,
+                    "支援割合": top_n_share_sum
+                }])
 
-                html_table = f"{table_style}<table class='event-analysis-table'>"
-                html_table += "<thead><tr><th>貢献ランク</th><th>ユーザー名</th><th>全体(順位/pts/Lv)</th><th>支援ポイント</th><th>支援割合</th></tr></thead>"
-                html_table += "<tbody>"
-
-                # 1行目: 合計行
-                # 「貢献ランク」列を左寄せ（align-left）に設定
-                html_table += f"""
-                <tr class='row-total'>
-                    <td class='align-left'>上位 {limit_n} 名 合計</td>
-                    <td class='align-left'>--- {limit_n} 名分の合計値 ---</td>
-                    <td class='align-center'>{overall_info}</td>
-                    <td class='align-right'>{top_n_pts_sum:,.0f}</td>
-                    <td class='align-right'>{top_n_share_sum:.2f} %</td>
-                </tr>
-                """
-
-                # 2行目以降: 個別データ
-                import html
-                for _, row in top_n_df.iterrows():
-                    p_val = row["point"]
-                    share_pct = (p_val / total_pts_raw * 100) if total_pts_raw > 0 else 0
-                    safe_name = html.escape(str(row['name']))
-
-                    # 「貢献ランク」列を右寄せ（align-right）に設定
-                    html_table += f"""
-                    <tr>
-                        <td class='align-right'>{int(row['rank'])} 位</td>
-                        <td class='align-left'>{safe_name}</td>
-                        <td class='align-center'>{overall_info}</td>
-                        <td class='align-right'>{p_val:,.0f}</td>
-                        <td class='align-right'>{share_pct:.2f} %</td>
-                    </tr>
-                    """
+                # --- 2. 個別ランキング用のデータ作成 ---
+                detail_rows_df = top_n_df.rename(columns={"rank": "貢献ランク", "name": "ユーザー名", "point": "支援ポイント"})
+                detail_rows_df["全体(順位 / pts / Lv)"] = overall_info
+                detail_rows_df["支援割合"] = (detail_rows_df["支援ポイント"] / total_pts_raw * 100)
                 
-                html_table += "</tbody></table>"
+                # 表示に必要な列だけに絞る
+                display_cols = ["貢献ランク", "ユーザー名", "全体(順位 / pts / Lv)", "支援ポイント", "支援割合"]
+                detail_rows_df = detail_rows_df[display_cols].sort_values("貢献ランク")
 
                 st.write(f"###### 📊 {target_event_name} の貢献構造 (上位 {limit_n} 名)")
-                st.markdown(html_table, unsafe_allow_html=True)
+
+                # A. 合計行の表示（TextColumnで左寄せ）
+                st.dataframe(
+                    summary_row_df.style.map(lambda _: 'background-color: #f1f3f6; font-weight: 900;'),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "貢献ランク": st.column_config.TextColumn("貢献ランク", width="small"),
+                        "ユーザー名": st.column_config.TextColumn("ユーザー名", width="large"),
+                        "全体(順位 / pts / Lv)": st.column_config.TextColumn("全体(順位 / pt / Lv)", width="medium"),
+                        "支援ポイント": st.column_config.NumberColumn("支援ポイント", format="%d", width="small"),
+                        "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%", width="small")
+                    }
+                )
+
+                # B. 個別明細の表示（NumberColumnで右寄せ）
+                st.dataframe(
+                    detail_rows_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "貢献ランク": st.column_config.NumberColumn("貢献ランク", format="%d 位", width="small"),
+                        "ユーザー名": st.column_config.TextColumn("ユーザー名", width="large"),
+                        "全体(順位 / pts / Lv)": st.column_config.TextColumn("全体(順位 / pt / Lv)", width="medium"),
+                        "支援ポイント": st.column_config.NumberColumn("支援ポイント", format="%d", width="small"),
+                        "支援割合": st.column_config.NumberColumn("支援割合", format="%.2f %%", width="small")
+                    }
+                )
                 
                 st.info(f"💡 このイベントでは、上位 {limit_n} 名で全体の **{top_n_share_sum:.1f}%** を占めています。")
