@@ -1898,6 +1898,10 @@ def reset_analysis_settings():
     st.session_state["alert_base"] = 9   # デフォルト値
     st.session_state["event_detail_limit_input"] = 10
 
+    if "event_detail_select" in st.session_state:
+            del st.session_state["event_detail_select"]
+
+
 # 3. 集計実行
 if selected_names:
     if st.button("📊 選択したイベントを集計・分析する", on_click=reset_analysis_settings):
@@ -2254,6 +2258,7 @@ if selected_names:
             "分析したいイベントを選択してください",
             options=saved_names,
             key="event_detail_select",
+            index=0,
             on_change=reset_event_limit
         )
 
