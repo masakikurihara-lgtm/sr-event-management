@@ -2320,4 +2320,4 @@ if selected_names:
                     }
                 )
                 
-                st.info(f"💡 このイベントでは、上位 {limit_n} 名で全体の **{top_n_share_sum:.1f}%** を占めています。")
+                st.info(f"💡 このイベントでは、上位 {limit_n} 名で全体の **{top_n_share_sum:.2f}%** を占めています。")
