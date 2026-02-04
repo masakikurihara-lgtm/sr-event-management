@@ -249,6 +249,8 @@ if "alert_diff" not in st.session_state:
     st.session_state["alert_diff"] = 25
 if "alert_base" not in st.session_state:
     st.session_state["alert_base"] = 9
+if "event_detail_limit" not in st.session_state:
+    st.session_state["event_detail_limit"] = 10
 
 def toggle_sort_by_point():
     """ソート状態を切り替えるコールバック関数"""
@@ -346,7 +348,7 @@ if "current_room_id" not in st.session_state:
 
 # 入力されたroom_idが保存されているIDと違う場合、古いデータを消す
 if st.session_state["current_room_id"] != room_id:
-    keys_to_reset = ["summary_df", "combined_df", "last_selected_names", "alert_diff", "alert_base"]
+    keys_to_reset = ["summary_df", "combined_df", "last_selected_names", "alert_diff", "alert_base", "event_detail_limit"]
     for key in keys_to_reset:
         if key in st.session_state:
             del st.session_state[key]
@@ -1894,6 +1896,7 @@ def reset_analysis_settings():
     # これにより、次に描画される際にこの値が強制的に反映されます
     st.session_state["alert_diff"] = 25  # デフォルト値
     st.session_state["alert_base"] = 9   # デフォルト値
+    st.session_state["event_detail_limit"] = 10
 
 # 3. 集計実行
 if selected_names:
