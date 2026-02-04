@@ -1897,7 +1897,8 @@ def reset_analysis_settings():
     st.session_state["alert_diff"] = 25  # デフォルト値
     st.session_state["alert_base"] = 9   # デフォルト値
     st.session_state["event_detail_limit_input"] = 10
-    st.session_state["event_detail_select"] = sorted_selected_names[0]
+    st.session_state["event_detail_select"] = saved_names[0]
+
 
     if "event_detail_select" in st.session_state:
             del st.session_state["event_detail_select"]
