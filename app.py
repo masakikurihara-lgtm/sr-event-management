@@ -2258,7 +2258,8 @@ if selected_names:
             limit_n = st.number_input(
                 "分析対象とする上位人数（しきい値）",
                 min_value=1, max_value=100, step=1,
-                key="event_detail_limit"
+                value=st.session_state.get("event_detail_limit", 10), # この行を追加
+                key="event_detail_limit_input" # keyを変更して制御を安定化
             )
 
             # データ抽出
