@@ -249,8 +249,8 @@ if "alert_diff" not in st.session_state:
     st.session_state["alert_diff"] = 25
 if "alert_base" not in st.session_state:
     st.session_state["alert_base"] = 9
-if "event_detail_limit" not in st.session_state:
-    st.session_state["event_detail_limit"] = 10
+if "event_detail_limit_input" not in st.session_state:
+    st.session_state["event_detail_limit_input"] = 10
 
 def toggle_sort_by_point():
     """ソート状態を切り替えるコールバック関数"""
@@ -1896,7 +1896,7 @@ def reset_analysis_settings():
     # これにより、次に描画される際にこの値が強制的に反映されます
     st.session_state["alert_diff"] = 25  # デフォルト値
     st.session_state["alert_base"] = 9   # デフォルト値
-    st.session_state["event_detail_limit"] = 10
+    st.session_state["event_detail_limit_input"] = 10
 
 # 3. 集計実行
 if selected_names:
@@ -2248,7 +2248,7 @@ if selected_names:
         st.write("##### 🎯 特定イベントの詳細貢献分析")
 
         def reset_event_limit():
-            st.session_state["event_detail_limit"] = 10
+            st.session_state["event_detail_limit_input"] = 10
 
         target_event_name = st.selectbox(
             "分析したいイベントを選択してください",
@@ -2261,8 +2261,7 @@ if selected_names:
             limit_n = st.number_input(
                 "分析対象とする上位人数（しきい値）",
                 min_value=1, max_value=100, step=1,
-                value=st.session_state.get("event_detail_limit", 10), # この行を追加
-                key="event_detail_limit_input" # keyを変更して制御を安定化
+                key="event_detail_limit_input" 
             )
 
             # データ抽出
