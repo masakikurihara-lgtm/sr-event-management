@@ -2004,14 +2004,14 @@ if selected_names:
             with col1:
                 diff_threshold = st.number_input(
                     "検知する変動順位幅（25〜50）", 
-                    min_value=25, max_value=100, value=25, 
+                    min_value=25, max_value=100, 
                     step=5, 
                     key="alert_diff"
                 )
             with col2:
                 base_rank_limit = st.number_input(
                     "起点ランクの定義（例: 9位以内）", 
-                    min_value=1, max_value=20, value=9, 
+                    min_value=1, max_value=20, 
                     key="alert_base"
                 )
 
@@ -2257,7 +2257,7 @@ if selected_names:
         if target_event_name:
             limit_n = st.number_input(
                 "分析対象とする上位人数（しきい値）",
-                min_value=1, max_value=100, value=10, step=1,
+                min_value=1, max_value=100, step=1,
                 key="event_detail_limit"
             )
 
