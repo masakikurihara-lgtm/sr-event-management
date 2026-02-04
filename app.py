@@ -2321,7 +2321,7 @@ if selected_names:
                     use_container_width=True,
                     hide_index=True,
                     column_config={
-                        "貢献ランク": st.column_config.NumberColumn("貢献ランク", width="small"),
+                        "貢献ランク": st.column_config.TextColumn("貢献ランク", width="small"),
                         "ユーザー名": st.column_config.TextColumn("ユーザー名", width="large"),
                         "全体(順位 / pts / Lv)": st.column_config.TextColumn("全体(順位 / pt / Lv)", width="medium"),
                         "支援ポイント": st.column_config.NumberColumn("支援ポイント", format="%d", width="small"),
