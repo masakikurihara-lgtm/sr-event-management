@@ -489,7 +489,8 @@ if is_admin:
                 idx, stats = res
                 # ✅ df_all と df の両方を同期更新
                 for target_df in [st.session_state.df_all, df]:
-                    target_df.at[idx, "順位"] = stats.get("rank") or "-"
+                    # target_df.at[idx, "順位"] = stats.get("rank") or "-"
+                    target_df.at[idx, "順位"] = str(stats.get("rank") or "-")
                     target_df.at[idx, "ポイント"] = stats.get("point") or 0
                     target_df.at[idx, "レベル"] = stats.get("quest_level") or 0
 
