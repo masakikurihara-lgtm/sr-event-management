@@ -491,8 +491,10 @@ if is_admin:
                 for target_df in [st.session_state.df_all, df]:
                     # target_df.at[idx, "順位"] = stats.get("rank") or "-"
                     target_df.at[idx, "順位"] = str(stats.get("rank") or "-")
-                    target_df.at[idx, "ポイント"] = stats.get("point") or 0
-                    target_df.at[idx, "レベル"] = stats.get("quest_level") or 0
+                    # target_df.at[idx, "ポイント"] = stats.get("point") or 0
+                    target_df.at[idx, "ポイント"] = str(stats.get("point") or 0)
+                    # target_df.at[idx, "レベル"] = stats.get("quest_level") or 0
+                    target_df.at[idx, "レベル"] = str(stats.get("quest_level") or 0)
 
     # ✅ 処理結果をセッション全体に反映
     st.session_state.df_all.update(df)
